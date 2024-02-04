@@ -394,7 +394,7 @@ fn do_oob_syscall(stage: IrqStage, regs: PtRegs) -> i32 {
     /* Update the stats and user visible info. */
     // [TODO: lack syncing of user info]
     // rros_inc_counter(&curr->stat.sc);
-    // rros_sync_uwindow(curr);
+    rros_sync_uwindow(curr);
 
     // [TODO: lack trace]
     // trace_rros_oob_sysexit(oob_retval(regs));
@@ -471,7 +471,7 @@ fn do_inband_syscall(_stage: IrqStage, regs: PtRegs) -> i32 {
 
         // [TODO: lack sync user stat]
         // rros_inc_counter(&curr->stat.sc);
-        // rros_sync_uwindow(curr);
+        rros_sync_uwindow(curr);
 
         // [TODO: lack trace]
         // trace_rros_inband_sysexit(oob_retval(regs));
@@ -508,7 +508,7 @@ fn do_inband_syscall(_stage: IrqStage, regs: PtRegs) -> i32 {
 
     // [TODO: lack sync user stat]
     // rros_inc_counter(&curr->stat.sc);
-    // rros_sync_uwindow(curr);
+    rros_sync_uwindow(curr);
 
     // [TODO: lack trace]
     // trace_rros_inband_sysexit(oob_retval!(regs));
