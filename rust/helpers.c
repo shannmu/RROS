@@ -521,6 +521,12 @@ void rust_helper_atomic_inc(atomic_t *v)
 }
 EXPORT_SYMBOL_GPL(rust_helper_atomic_inc);
 
+int rust_helper_atomic_inc_return(atomic_t *v)
+{
+	return atomic_inc_return(v);
+}
+EXPORT_SYMBOL_GPL(rust_helper_atomic_inc_return);
+
 bool rust_helper_atomic_dec_and_test(atomic_t *v)
 {
 	return atomic_dec_and_test(v);
@@ -562,6 +568,12 @@ int rust_helper_atomic_cmpxchg(atomic_t *v, int old, int new)
 	return atomic_cmpxchg(v, old, new);
 }
 EXPORT_SYMBOL_GPL(rust_helper_atomic_cmpxchg);
+
+bool rust_helper_atomic_try_cmpxchg(atomic_t *v, int* old, int new)
+{
+	return atomic_try_cmpxchg(v, old, new);
+}
+EXPORT_SYMBOL_GPL(rust_helper_atomic_try_cmpxchg);
 
 int rust_helper_atomic_add_return(int i, atomic_t *v)
 {
