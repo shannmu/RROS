@@ -26,7 +26,7 @@ use kernel::{
     io_buffer::IoBufferWriter,
     irq_work, kernelh,
     prelude::*,
-    rbtree, spinlock_init,
+    spinlock_init,
     str::CStr,
     sync::{Lock, SpinLock},
     sysfs, types,
@@ -1223,6 +1223,7 @@ impl Default for RrosElementIds {
 }
 
 impl RrosElementIds {
+    #[allow(dead_code)]
     pub fn get_minor(&self) -> c_types::c_uint {
         self.minor
     }
@@ -1231,6 +1232,7 @@ impl RrosElementIds {
         Ok(0)
     }
 
+    #[allow(dead_code)]
     pub fn get_fundle(&self) -> FundleT {
         self.fundle
     }
@@ -1240,10 +1242,12 @@ impl RrosElementIds {
         Ok(0)
     }
 
+    #[allow(dead_code)]
     pub fn get_state_offset(&self) -> c_types::c_uint {
         self.state_offset
     }
 
+    #[allow(dead_code)]
     pub fn set_state_offset(&mut self, state_offset: u32) -> Result<i32> {
         self.state_offset = state_offset as c_types::c_uint;
         Ok(0)
