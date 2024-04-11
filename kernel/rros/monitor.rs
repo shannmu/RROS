@@ -806,7 +806,70 @@ fn monitor_factory_build(
     return e;
 }
 
-fn monitor_factory_dispose(_ele: factory::RrosElement) {}
+fn monitor_factory_dispose(ele: factory::RrosElement) {
+    // TODO: monitor_factory_dispose
+    let mut monitor = unsafe { Box::from_raw(ele.pointer as *mut RrosMonitor) };
+    let e = Rc::try_new(RefCell::new(ele)).unwrap();
+    rros_unindex_factory_element(e.clone());
+    match monitor.type_foo {
+        RROS_MONITOR_EVENT => {
+            let event_core = if let RrosMonitorCore::Event(event) = &mut monitor.core {
+                event.clone()
+            } else {
+                panic!("invalid RrosMonitorCore value");
+            };
+            event_core
+                .deref()
+                .inner
+                .borrow_mut()
+                .deref_mut()
+                .wait_queue
+                .destory();
+            if (event_core
+                .deref()
+                .inner
+                .borrow_mut()
+                .deref_mut()
+                .gate
+                .is_some())
+            {
+                let (mut gate, _) = get_monitor_by_fd(
+                    event_core
+                        .deref()
+                        .inner
+                        .borrow_mut()
+                        .deref_mut()
+                        .gate
+                        .unwrap() as i32,
+                )
+                .unwrap();
+                let gate_core = if let RrosMonitorCore::Gate(gate_core) = &mut gate.core {
+                    gate_core
+                } else {
+                    panic!("invalid RrosMonitorCore value");
+                };
+                let flags = raw_spin_lock_irqsave(&mut gate_core.lock);
+                unsafe {
+                    gate_core.events.remove(&event_core);
+                }
+                raw_spin_unlock_irqrestore(&mut gate_core.lock, flags)
+            }
+        }
+        RROS_MONITOR_GATE => {
+            let gate_core = if let RrosMonitorCore::Gate(gate_core) = &mut monitor.core {
+                gate_core
+            } else {
+                panic!("invalid RrosMonitorCore value");
+            };
+            rros_destroy_mutex(Arc::as_ptr(&gate_core.mutex) as *mut RrosMutex);
+        }
+        _ => {
+            panic!("invalid monitor type");
+        }
+    }
+
+    // rros_destroy_element();
+}
 
 pub static mut RROS_MONITOR_FACTORY: SpinLock<factory::RrosFactory> = unsafe {
     SpinLock::new(factory::RrosFactory {
