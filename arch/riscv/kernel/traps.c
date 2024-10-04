@@ -111,9 +111,29 @@ void die(struct pt_regs *regs, const char *str)
 		make_task_dead(SIGSEGV);
 }
 
+static __always_inline
+bool mark_trap_entry(int signo, struct pt_regs *regs)
+{
+	if (likely(running_inband())) {
+		hard_cond_local_irq_enable();
+		return true;
+	}
+
+	return false;
+}
+
+static __always_inline
+void mark_trap_exit(int signo, struct pt_regs *regs)
+{
+	hard_cond_local_irq_disable();
+}
+
 void do_trap(struct pt_regs *regs, int signo, int code, unsigned long addr)
 {
 	struct task_struct *tsk = current;
+
+	if (!mark_trap_entry(signo, regs))
+		return;
 
 	if (show_unhandled_signals && unhandled_signal(tsk, signo)
 	    && printk_ratelimit()) {
@@ -126,6 +146,8 @@ void do_trap(struct pt_regs *regs, int signo, int code, unsigned long addr)
 	}
 
 	force_sig_fault(signo, code, (void __user *)addr);
+
+	mark_trap_exit(signo, regs);
 }
 
 static void do_trap_error(struct pt_regs *regs, int signo, int code,
@@ -174,11 +196,17 @@ asmlinkage __visible __trap_section void do_trap_insn_illegal(struct pt_regs *re
 	if (user_mode(regs)) {
 		irqentry_enter_from_user_mode(regs);
 
-		local_irq_enable();
+		if (running_inband())
+			local_irq_enable_full();
+		else
+			hard_local_irq_enable();
 
 		handled = riscv_v_first_use_handler(regs);
 
-		local_irq_disable();
+		if (running_inband())
+			local_irq_disable_full();
+		else
+			hard_local_irq_disable();
 
 		if (!handled)
 			do_trap_error(regs, SIGILL, ILL_ILLOPC, regs->epc,
@@ -341,7 +369,7 @@ void do_trap_ecall_u(struct pt_regs *regs)
 		 * The resulting 6 bits of entropy is seen in SP[9:4].
 		 */
 		choose_random_kstack_offset(get_random_u16());
-
+done:
 		syscall_exit_to_user_mode(regs);
 	} else {
 		irqentry_state_t state = irqentry_nmi_enter(regs);
@@ -361,12 +389,24 @@ asmlinkage __visible noinstr void do_page_fault(struct pt_regs *regs)
 
 	handle_page_fault(regs);
 
-	local_irq_disable();
+	if (running_inband())
+		local_irq_disable_full();
+	else
+		hard_local_irq_disable();
 
 	irqentry_exit(regs, state);
 }
 #endif
 
+#ifdef CONFIG_IRQ_PIPELINE
+static void noinstr handle_riscv_irq(struct pt_regs *regs)
+{
+	struct pt_regs *old_regs = set_irq_regs(regs);
+
+	handle_irq_pipelined(regs);
+	set_irq_regs(old_regs);
+}
+#else
 static void noinstr handle_riscv_irq(struct pt_regs *regs)
 {
 	struct pt_regs *old_regs;
@@ -377,6 +417,9 @@ static void noinstr handle_riscv_irq(struct pt_regs *regs)
 	set_irq_regs(old_regs);
 	irq_exit_rcu();
 }
+#endif
+
+extern void (*handle_arch_irq)(struct pt_regs *);
 
 asmlinkage void noinstr do_irq(struct pt_regs *regs)
 {
