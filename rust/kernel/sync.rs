@@ -12,11 +12,16 @@ mod condvar;
 pub mod lock;
 mod locked_by;
 
-pub use arc::{Arc, ArcBorrow, UniqueArc};
+pub use arc::{Arc, ArcBorrow, UniqueArc, Ref, RefBorrow};
 pub use condvar::{new_condvar, CondVar, CondVarTimeoutResult};
-pub use lock::mutex::{new_mutex, Mutex};
-pub use lock::spinlock::{new_spinlock, SpinLock};
+pub use lock::mutex::{new_mutex, Mutex, mutex_lock, mutex_unlock};
+pub use lock::spinlock::{new_spinlock, SpinLock, HardSpinlock};
 pub use locked_by::LockedBy;
+
+use alloc::boxed::Box;
+use crate::str::CStr;
+use core::pin::Pin;
+use crate::{bindings, c_types};
 
 /// Represents a lockdep class. It's a wrapper around C's `lock_class_key`.
 #[repr(transparent)]
@@ -58,4 +63,14 @@ macro_rules! optional_name {
     ($name:literal) => {
         $crate::c_str!($name)
     };
+}
+
+extern "C" {
+    fn rust_helper_cond_resched() -> c_types::c_int;
+}
+
+/// Reschedules the caller's task if needed.
+pub fn cond_resched() -> bool {
+    // SAFETY: No arguments, reschedules `current` if needed.
+    unsafe { rust_helper_cond_resched() != 0 }
 }

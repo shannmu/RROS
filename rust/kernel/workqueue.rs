@@ -137,6 +137,7 @@ use alloc::alloc::AllocError;
 use alloc::boxed::Box;
 use core::marker::PhantomData;
 use core::pin::Pin;
+use core::{ops::Deref, ptr::NonNull};
 
 /// Creates a [`Work`] initialiser with the given name and a newly-created lock class.
 #[macro_export]
@@ -677,4 +678,45 @@ pub fn system_power_efficient() -> &'static Queue {
 pub fn system_freezable_power_efficient() -> &'static Queue {
     // SAFETY: `system_freezable_power_efficient_wq` is a C global, always available.
     unsafe { Queue::from_raw(bindings::system_freezable_power_efficient_wq) }
+}
+
+/// A boxed owned workqueue.
+///
+/// # Invariants
+///
+/// `ptr` is owned by this instance of [`BoxedQueue`], so it's always valid.
+pub struct BoxedQueue {
+    ptr: NonNull<Queue>,
+}
+
+impl BoxedQueue {
+    /// Creates a new instance of [`BoxedQueue`].
+    ///
+    /// # Safety
+    ///
+    /// `ptr` must be non-null and valid. Additionally, ownership must be handed over to new
+    /// instance of [`BoxedQueue`].
+    unsafe fn new(ptr: *mut bindings::workqueue_struct) -> Self {
+        Self {
+            // SAFETY: We checked above that `ptr` is non-null.
+            // FIXME: can't directly `cast`, Queue is not `#[repr(transparent)]`
+            ptr: unsafe { NonNull::new_unchecked(ptr.cast()) },
+        }
+    }
+}
+
+impl Deref for BoxedQueue {
+    type Target = Queue;
+
+    fn deref(&self) -> &Queue {
+        // SAFETY: The type invariants guarantee that `ptr` is always valid.
+        unsafe { self.ptr.as_ref() }
+    }
+}
+
+impl Drop for BoxedQueue {
+    fn drop(&mut self) {
+        // SAFETY: The type invariants guarantee that `ptr` is always valid.
+        unsafe { bindings::destroy_workqueue(self.ptr.as_ref().0.get()) };
+    }
 }

@@ -1,7 +1,7 @@
 use kernel::{
     bindings, c_types, clockchips, clockchips::ClockEventDevice, cpumask, interrupt,
     irq_pipeline::*, ktime::*, percpu::alloc_per_cpu, percpu_defs, prelude::*, str::CStr,
-    sync::Lock, tick,
+    tick,
 };
 
 use crate::{
@@ -113,7 +113,7 @@ pub fn rros_enable_tick() -> Result<usize> {
         ) as *mut clockchips::ClockProxyDevice;
         // if PROXY_DEVICE == 0 as *mut *mut bindings::clock_proxy_device {
         if PROXY_DEVICE == null_mut() {
-            return Err(kernel::Error::ENOMEM);
+            return Err(kernel::error::code::ENOMEM);
         }
         pr_debug!("PROXY_DEVICE alloc success");
     }
@@ -133,7 +133,7 @@ pub fn rros_enable_tick() -> Result<usize> {
             )
         };
         if ret != 0 {
-            return Err(kernel::Error::ENOMEM);
+            return Err(kernel::error::code::ENOMEM);
         }
     }
 
@@ -243,11 +243,11 @@ pub fn rros_program_proxy_tick(clock: &RrosClock) {
     }
 
     let mut timer = unsafe { (*tmb).q.get_head().unwrap().value.clone() };
-    let inband_timer_addr = unsafe { (*this_rq).get_inband_timer().locked_data().get() };
-    let timer_addr = timer.locked_data().get();
+    let inband_timer_addr = unsafe { (*this_rq).get_inband_timer().lock().deref() };
+    let timer_addr = timer.lock().deref();
     if timer_addr == inband_timer_addr {
         unsafe {
-            let state = (*(*this_rq).get_curr().locked_data().get()).state;
+            let state = (*(*this_rq).get_curr().lock().deref()).state;
             if rros_need_resched(this_rq) || state & T_ROOT == 0x0 {
                 if (*tmb).q.len() > 1 {
                     (*this_rq).add_local_flags(RQ_TDEFER);
@@ -256,7 +256,7 @@ pub fn rros_program_proxy_tick(clock: &RrosClock) {
             }
         }
     }
-    let t = unsafe { (*timer.locked_data().get()).get_date() };
+    let t = unsafe { (*timer.lock().deref()).get_date() };
     let mut delta = ktime_to_ns(ktime_sub(t, clock.read()));
     if real_dev.get_features() as u32 & CLOCK_EVT_FEAT_KTIME != 0 {
         real_dev.set_next_ktime(t, real_dev.get_ptr());

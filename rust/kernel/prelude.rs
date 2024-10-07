@@ -15,10 +15,10 @@
 pub use core::pin::Pin;
 
 #[doc(no_inline)]
-pub use alloc::{boxed::Box, vec::Vec};
+pub use alloc::{boxed::Box, vec::Vec, sync::Arc};
 
 #[doc(no_inline)]
-pub use macros::{module, pin_data, pinned_drop, vtable, Zeroable};
+pub use macros::{module, pin_data, pinned_drop, vtable, Zeroable, no_mangle_function_declaration};
 
 pub use super::build_assert;
 

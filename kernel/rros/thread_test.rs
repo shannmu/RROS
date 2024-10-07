@@ -59,16 +59,16 @@ pub fn test_thread_context_switch() {
     //     KTHREAD_RUNNER_1 = Some(KthreadRunner::new(Box::try_new(kfn_1).unwrap()));
     //     let mut thread = SpinLock::new(sched::RrosThread::new().unwrap());
     //     let pinned = Pin::new_unchecked(&mut thread);
-    //     spinlock_init!(pinned, "test_threads1");
+    //     new_spinlock!(pinned, "test_threads1");
     //     KTHREAD_RUNNER_1.as_mut().unwrap().kthread.thread = Some(Arc::try_new(thread).unwrap());
 
     //     let mut r = SpinLock::new(timer::RrosTimer::new(1));
     //     let pinned_r = Pin::new_unchecked(&mut r);
-    //     spinlock_init!(pinned_r, "rtimer_1");
+    //     new_spinlock!(pinned_r, "rtimer_1");
 
     //     let mut p = SpinLock::new(timer::RrosTimer::new(1));
     //     let pinned_p = Pin::new_unchecked(&mut p);
-    //     spinlock_init!(pinned_p, "ptimer_1");
+    //     new_spinlock!(pinned_p, "ptimer_1");
 
     //     KTHREAD_RUNNER_1
     //         .as_mut()
@@ -106,17 +106,17 @@ pub fn test_thread_context_switch() {
     // unsafe {
     //     KTHREAD_RUNNER_2 = Some(KthreadRunner::new(Box::try_new(kfn_2).unwrap()));
     //     let mut thread = SpinLock::new(sched::RrosThread::new().unwrap());
-    //     let pinned: Pin<&mut SpinLock<sched::RrosThread>> = Pin::new_unchecked(&mut thread);
-    //     spinlock_init!(pinned, "test_threads2");
+    //     let pinned: Pin<&mut Pin<Box<SpinLock<sched::RrosThread>>>> = Pin::new_unchecked(&mut thread);
+    //     new_spinlock!(pinned, "test_threads2");
     //     KTHREAD_RUNNER_2.as_mut().unwrap().kthread.thread = Some(Arc::try_new(thread).unwrap());
 
     //     let mut r = SpinLock::new(timer::RrosTimer::new(1));
     //     let pinned_r = Pin::new_unchecked(&mut r);
-    //     spinlock_init!(pinned_r, "rtimer_2");
+    //     new_spinlock!(pinned_r, "rtimer_2");
 
     //     let mut p = SpinLock::new(timer::RrosTimer::new(1));
     //     let pinned_p = Pin::new_unchecked(&mut p);
-    //     spinlock_init!(pinned_p, "ptimer_2");
+    //     new_spinlock!(pinned_p, "ptimer_2");
 
     //     KTHREAD_RUNNER_2
     //         .as_mut()

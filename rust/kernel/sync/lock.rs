@@ -19,6 +19,21 @@ use macros::pin_data;
 pub mod mutex;
 pub mod spinlock;
 
+extern "C" {
+    #[allow(dead_code)]
+    fn rust_helper_spin_lock(lock: *mut bindings::spinlock);
+    #[allow(dead_code)]
+    fn rust_helper_spin_unlock(lock: *mut bindings::spinlock);
+    fn rust_helper_hard_spin_lock(lock: *mut bindings::raw_spinlock);
+    fn rust_helper_hard_spin_unlock(lock: *mut bindings::raw_spinlock);
+    fn rust_helper_raw_spin_lock_irqsave(lock: *mut bindings::hard_spinlock_t) -> u64;
+    fn rust_helper_raw_spin_unlock_irqrestore(lock: *mut bindings::hard_spinlock_t, flags: u64);
+    fn rust_helper_raw_spin_lock_init(lock: *mut bindings::raw_spinlock_t);
+    fn rust_helper_raw_spin_lock(lock: *mut bindings::hard_spinlock_t);
+    fn rust_helper_raw_spin_unlock(lock: *mut bindings::hard_spinlock_t);
+    fn rust_helper_raw_spin_lock_nested(lock: *mut bindings::hard_spinlock_t, depth: u32);
+}
+
 /// The "backend" of a lock.
 ///
 /// It is the actual implementation of the lock, without the need to repeat patterns used in all
@@ -133,6 +148,31 @@ impl<T: ?Sized, B: Backend> Lock<T, B> {
         let state = unsafe { B::lock(self.state.get()) };
         // SAFETY: The lock was just acquired.
         unsafe { Guard::new(self, state) }
+    }
+
+    pub fn irq_unlock_noguard(&self, flags: u64) {
+        // SAFETY: The caller guarantees that self is initialised. So the pointer is valid.
+        unsafe {
+            rust_helper_raw_spin_unlock_irqrestore(
+                self.state.get() as *mut bindings::hard_spinlock_t,
+                flags,
+            );
+        }
+    }
+
+    pub fn irq_lock_noguard(&self) -> u64 {
+        // SAFETY: The caller guarantees that self is initialised. So the pointer is valid.
+        unsafe {
+            rust_helper_raw_spin_lock_irqsave(self.state.get() as *mut bindings::hard_spinlock_t)
+        }
+    }
+
+    pub fn lock_noguard(&self) {
+        // SAFETY: `spin_lock` points to valid memory.
+        // unsafe { rust_helper_spin_lock(self.spin_lock.get()) };
+        unsafe { rust_helper_hard_spin_lock(self.state.get() as *mut bindings::raw_spinlock) };
+        // unsafe { rust_helper_hard_spin_lock((*self.spin_lock.get()).rlock()
+        // as *mut bindings::raw_spinlock) };
     }
 }
 

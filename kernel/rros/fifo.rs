@@ -3,7 +3,7 @@ use kernel::{
     c_types,
     double_linked_list::Node,
     prelude::*,
-    sync::{Lock, SpinLock},
+    sync::{SpinLock, Arc},
 };
 
 pub static mut RROS_SCHED_FIFO: sched::RrosSchedClass = sched::RrosSchedClass {
@@ -75,7 +75,7 @@ fn rros_fifo_init(_rq: *mut sched::rros_rq) -> Result<usize> {
 fn rros_fifo_tick(rq: Option<*mut sched::rros_rq>) -> Result<usize> {
     match rq {
         Some(_) => (),
-        None => return Err(kernel::Error::EINVAL),
+        None => return Err(kernel::error::code::EINVAL),
     }
     let rq_ptr = rq.unwrap();
     let curr;
@@ -84,7 +84,7 @@ fn rros_fifo_tick(rq: Option<*mut sched::rros_rq>) -> Result<usize> {
             Some(c) => curr = Some(c.clone()),
             None => {
                 pr_warn!("err");
-                return Err(kernel::Error::EINVAL);
+                return Err(kernel::error::code::EINVAL);
             }
         }
     }
@@ -133,7 +133,7 @@ fn rros_fifo_show(
         if (*thread).state & T_RRB != 0 {
             // return snprintf(buf, count, "%Ld\n",ktime_to_ns(thread->rrperiod));
             pr_warn!("rros_fifo_show error!!");
-            return Err(kernel::Error::EPERM);
+            return Err(kernel::error::code::EPERM);
         }
     }
     Ok(0)
@@ -147,7 +147,7 @@ fn __rros_set_fifo_schedparam(
     let p_unwrap = p.unwrap();
     let thread_unwrap = thread.unwrap();
 
-    let prio = unsafe { (*p_unwrap.locked_data().get()).fifo.prio };
+    let prio = unsafe { (*p_unwrap.lock().deref()).fifo.prio };
     let ret = sched::rros_set_effective_thread_priority(thread_clone, prio);
     let state = thread_unwrap.lock().state;
     if state & T_BOOST == 0 {
@@ -174,14 +174,14 @@ fn __rros_chk_fifo_schedparam(
     let mut max = RROS_FIFO_MAX_PRIO;
     let p_unwrap = p.unwrap();
     unsafe {
-        let state = (*thread_unwrap.locked_data().get()).state;
+        let state = (*thread_unwrap.lock().deref()).state;
         if state & T_USER == 0x0 {
             min = RROS_CORE_MIN_PRIO;
             max = RROS_CORE_MAX_PRIO;
         }
-        let prio = (*p_unwrap.locked_data().get()).fifo.prio;
+        let prio = (*p_unwrap.lock().deref()).fifo.prio;
         if prio < min || prio > max {
-            return Err(kernel::Error::EINVAL);
+            return Err(kernel::error::code::EINVAL);
         }
     }
     Ok(0)
@@ -201,13 +201,13 @@ fn __rros_track_fifo_priority(
 }
 
 fn __rros_ceil_fifo_priority(thread: Arc<SpinLock<sched::RrosThread>>, prio: i32) {
-    unsafe { (*thread.locked_data().get()).cprio = prio };
+    unsafe { (*thread.lock().deref()).cprio = prio };
 }
 
 pub fn __rros_dequeue_fifo_thread(thread: Arc<SpinLock<sched::RrosThread>>) -> Result<usize> {
     let rq_next = thread.lock().rq_next.clone();
     if rq_next.is_none() {
-        return Err(kernel::Error::EINVAL);
+        return Err(kernel::error::code::EINVAL);
     } else {
         unsafe {
             // thread.lock().rq_next.clone().as_mut().unwrap().remove();
@@ -223,7 +223,7 @@ pub fn __rros_enqueue_fifo_thread(thread: Arc<SpinLock<sched::RrosThread>>) -> R
     let rq_ptr;
     match thread.lock().rq.clone() {
         Some(rq) => rq_ptr = rq,
-        None => return Err(kernel::Error::EINVAL),
+        None => return Err(kernel::error::code::EINVAL),
     }
 
     let q = unsafe { (*rq_ptr).fifo.runnable.head.as_mut().unwrap() };
@@ -262,31 +262,31 @@ pub fn __rros_enqueue_fifo_thread(thread: Arc<SpinLock<sched::RrosThread>>) -> R
 pub fn __rros_requeue_fifo_thread(thread: Arc<SpinLock<sched::RrosThread>>) -> Result<usize> {
     unsafe {
         let rq_ptr;
-        match (*thread.locked_data().get()).rq.clone() {
+        match (*thread.lock().deref()).rq.clone() {
             Some(rq) => rq_ptr = rq,
-            None => return Err(kernel::Error::EINVAL),
+            None => return Err(kernel::error::code::EINVAL),
         }
         let q = (*rq_ptr).fifo.runnable.head.as_mut().unwrap();
-        let new_cprio = (*thread.locked_data().get()).cprio;
+        let new_cprio = (*thread.lock().deref()).cprio;
         if q.is_empty() {
             q.add_head(thread.clone());
-            // (*thread.locked_data().get()).rq_next = Some(Node::new(q.head.prev.clone().unwrap().as_ref().value.clone()));
-            (*thread.locked_data().get()).rq_next = q.head.prev;
-            // pr_debug!("addr: {:p}", (*thread.locked_data().get()).rq_next.clone().as_mut().unwrap());
+            // (*thread.lock().deref()).rq_next = Some(Node::new(q.head.prev.clone().unwrap().as_ref().value.clone()));
+            (*thread.lock().deref()).rq_next = q.head.prev;
+            // pr_debug!("addr: {:p}", (*thread.lock().deref()).rq_next.clone().as_mut().unwrap());
         } else {
             let mut p = q.head.prev;
             // Traverse in reverse order.
             loop {
-                let pos_cprio = (*(p.unwrap().as_ref().value).locked_data().get()).cprio;
+                let pos_cprio = (*(p.unwrap().as_ref().value).lock().deref()).cprio;
                 if p.unwrap().as_ptr() == &mut q.head as *mut Node<Arc<SpinLock<sched::RrosThread>>>
                     || new_cprio < pos_cprio
                 {
                     p.unwrap()
                         .as_mut()
                         .add(p.unwrap().as_ref().next.unwrap().as_ptr(), thread.clone());
-                    // (*thread.locked_data().get()).rq_next =
+                    // (*thread.lock().deref()).rq_next =
                     //     Some(Node::new(p.unwrap().as_ref().next.clone().unwrap().as_ref().value.clone()));
-                    (*thread.locked_data().get()).rq_next = p.unwrap().as_mut().next.clone();
+                    (*thread.lock().deref()).rq_next = p.unwrap().as_mut().next.clone();
                     // Some(Node::new(p.unwrap().as_ref().next.clone().unwrap().as_ref().value.clone()));
                     break;
                 } else {

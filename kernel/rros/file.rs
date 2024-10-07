@@ -19,12 +19,12 @@ use crate::{
 use kernel::{
     bindings, c_types,
     file::FilesStruct,
-    init_static_sync,
     prelude::*,
     rbtree,
     str::CStr,
-    sync::{Lock, SpinLock},
+    sync::SpinLock,
     task::Task,
+    new_spinlock,
 };
 
 pub struct RrosFileBinding {
@@ -96,7 +96,7 @@ impl RrosFile {
             .to_str()
             {
                 Ok(s) => Ok(s),
-                Err(_) => Err(Error::EINVAL),
+                Err(_) => Err(kernel::error::code::EINVAL),
             }
         }
     }
@@ -150,9 +150,9 @@ impl DerefMut for FdTree {
     }
 }
 unsafe impl Send for FdTree {}
-init_static_sync! {
-    static FD_TREE: SpinLock<FdTree> = FdTree(rbtree::RBTree::new());
-}
+
+static FD_TREE: Pin<Box<SpinLock<FdTree>>> = Box::pin_init(new_spinlock!(FdTree(rbtree::RBTree::new()))).unwrap();
+
 
 // pub static mut FD_TREE: Option<Arc<SpinLock<rbtree::RBTree<u32, RrosFd>>>> = Some(init_rbtree().unwrap());
 
@@ -160,7 +160,7 @@ init_static_sync! {
 pub fn index_rfd(rfd: RrosFd, _filp: *mut bindings::file) -> Result<usize> {
     let flags = FD_TREE.irq_lock_noguard();
     unsafe {
-        (*FD_TREE.locked_data().get()).try_insert(rfd.fd, rfd)?;
+        (*FD_TREE.lock().deref()).try_insert(rfd.fd, rfd)?;
     }
     FD_TREE.irq_unlock_noguard(flags);
     Ok(0)
@@ -173,7 +173,7 @@ pub fn index_rfd(rfd: RrosFd, _filp: *mut bindings::file) -> Result<usize> {
 pub fn lookup_rfd(fd: u32, _files: &mut FilesStruct) -> Option<*mut RrosFd> {
     let flags = FD_TREE.irq_lock_noguard();
     // `get_mut` has the same name as the lock's `get_mut`, so unsafe is used.
-    if let Some(rfd) = unsafe { (*FD_TREE.locked_data().get()).get_mut(&fd) } {
+    if let Some(rfd) = unsafe { (*FD_TREE.lock().deref()).get_mut(&fd) } {
         FD_TREE.irq_unlock_noguard(flags);
         return Some(rfd as *mut RrosFd);
     } else {
@@ -188,7 +188,7 @@ pub fn lookup_rfd(fd: u32, _files: &mut FilesStruct) -> Option<*mut RrosFd> {
 pub fn unindex_rfd(fd: u32, _files: &mut FilesStruct) -> Option<RrosFd> {
     let flags = FD_TREE.irq_lock_noguard();
     pr_debug!("unindex_rfd 1");
-    let ret = unsafe { (*FD_TREE.locked_data().get()).remove(&fd) };
+    let ret = unsafe { (*FD_TREE.lock().deref()).remove(&fd) };
     pr_debug!("unindex_rfd 2");
     if ret.is_none() {
         pr_debug!("unindex_rfd 3");

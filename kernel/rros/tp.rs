@@ -7,8 +7,8 @@ use kernel::{
     ktime::{ktime_to_timespec64, timespec64_to_ktime, Timespec64},
     memory_rros::*,
     prelude::*,
-    spinlock_init,
-    sync::{Lock, SpinLock},
+    new_spinlock,
+    sync::{SpinLock, Arc},
     types::Atomic,
 };
 
@@ -166,11 +166,11 @@ pub fn tp_init(rq: *mut rros_rq) -> Result<usize> {
                 tmp.assume_init()
             };
             let pinned = Pin::new_unchecked(Arc::get_mut_unchecked(&mut tmp));
-            spinlock_init!(pinned, "tp kthread");
+            new_spinlock!(pinned, "tp kthread");
 
             // let mut thread = SpinLock::new(RrosThread::new()?);
             // let pinned = Pin::new_unchecked(&mut thread);
-            // spinlock_init!(pinned, "rros_threads");
+            // new_spinlock!(pinned, "rros_threads");
             // Arc::get_mut(&mut tmp).unwrap().write(thread);
             temp[n as usize].runnable.head = Some(List::new(tmp)); //Arc::try_new(thread)?
             (*temp[n as usize]
@@ -183,9 +183,9 @@ pub fn tp_init(rq: *mut rros_rq) -> Result<usize> {
                 .locked_data()
                 .get())
             .init()?;
-            // let pinned = Pin::new_unchecked(&mut *(Arc::into_raw( temp[n as usize].runnable.head.as_mut().unwrap().head.value.clone()) as *mut SpinLock<RrosThread>));
-            // // &mut *Arc::into_raw( *(*rq_ptr).root_thread.clone().as_mut().unwrap()) as &mut SpinLock<RrosThread>
-            // spinlock_init!(pinned, "rros_threads");
+            // let pinned = Pin::new_unchecked(&mut *(Arc::into_raw( temp[n as usize].runnable.head.as_mut().unwrap().head.value.clone()) as *mut Pin<Box<SpinLock<RrosThread>>>));
+            // // &mut *Arc::into_raw( *(*rq_ptr).root_thread.clone().as_mut().unwrap()) as &mut Pin<Box<SpinLock<RrosThread>>>
+            // new_spinlock!(pinned, "rros_threads");
         }
         tp.partitions = Some(temp);
         tp.tps = 0 as *mut RrosTpRq;
@@ -194,7 +194,7 @@ pub fn tp_init(rq: *mut rros_rq) -> Result<usize> {
 
         let mut tf_timer = SpinLock::new(RrosTimer::new(2));
         let pinned_p = Pin::new_unchecked(&mut tf_timer);
-        spinlock_init!(pinned_p, "ptimer");
+        new_spinlock!(pinned_p, "ptimer");
         tp.tf_timer = Some(Arc::try_new(tf_timer)?);
 
         rros_init_timer_on_rq(
@@ -218,13 +218,13 @@ pub fn tp_setparam(
     unsafe {
         let thread_clone = thread.clone();
         let thread_clone = thread_clone.unwrap();
-        let rq = (*thread_clone.locked_data().get()).rq.unwrap();
+        let rq = (*thread_clone.lock().deref()).rq.unwrap();
         let p = p.unwrap();
-        (*thread_clone.locked_data().get()).tps = &mut (*rq).tp.partitions.as_mut().unwrap()
-            [(*p.locked_data().get()).tp.ptid as usize]
+        (*thread_clone.lock().deref()).tps = &mut (*rq).tp.partitions.as_mut().unwrap()
+            [(*p.lock().deref()).tp.ptid as usize]
             as *mut RrosTpRq;
-        (*thread_clone.locked_data().get()).state &= !T_WEAK;
-        let prio = (*p.locked_data().get()).tp.prio;
+        (*thread_clone.lock().deref()).state &= !T_WEAK;
+        let prio = (*p.lock().deref()).tp.prio;
         rros_set_effective_thread_priority(thread.clone(), prio)
     }
 }
@@ -236,14 +236,14 @@ pub fn tp_getparam(
     let thread = thread.unwrap();
     let p = p.unwrap();
     unsafe {
-        (*p.locked_data().get()).tp.prio = (*thread.locked_data().get()).cprio;
-        let p1 = (*thread.locked_data().get()).tps;
-        let p2 = &mut (*(*thread.locked_data().get()).rq.unwrap())
+        (*p.lock().deref()).tp.prio = (*thread.lock().deref()).cprio;
+        let p1 = (*thread.lock().deref()).tps;
+        let p2 = &mut (*(*thread.lock().deref()).rq.unwrap())
             .tp
             .partitions
             .as_mut()
             .unwrap()[0] as *mut RrosTpRq;
-        (*p.locked_data().get()).tp.ptid = p1.offset_from(p2) as i32;
+        (*p.lock().deref()).tp.ptid = p1.offset_from(p2) as i32;
     }
 }
 
@@ -259,9 +259,9 @@ pub fn tp_trackprio(
             //     thread->tps - rros_thread_rq(thread)->tp.partitions
             //     != p->tp.ptid);
             let p = p.unwrap();
-            (*thread.locked_data().get()).cprio = (*p.locked_data().get()).tp.prio;
+            (*thread.lock().deref()).cprio = (*p.lock().deref()).tp.prio;
         } else {
-            (*thread.locked_data().get()).cprio = (*thread.locked_data().get()).bprio;
+            (*thread.lock().deref()).cprio = (*thread.lock().deref()).bprio;
         }
     }
 }
@@ -271,7 +271,7 @@ pub fn tp_ceilprio(thread: Arc<SpinLock<RrosThread>>, mut prio: i32) {
         prio = RROS_TP_MAX_PRIO;
     }
 
-    unsafe { (*thread.locked_data().get()).cprio = prio };
+    unsafe { (*thread.lock().deref()).cprio = prio };
 }
 
 pub fn tp_chkparam(
@@ -281,11 +281,11 @@ pub fn tp_chkparam(
     unsafe {
         let thread = thread.unwrap();
         let p = p.unwrap();
-        let rq = (*thread.locked_data().get()).rq.unwrap();
+        let rq = (*thread.lock().deref()).rq.unwrap();
         let tp = &(*rq).tp;
 
-        let prio = (*p.locked_data().get()).tp.prio;
-        let ptid = (*p.locked_data().get()).tp.ptid;
+        let prio = (*p.lock().deref()).tp.prio;
+        let ptid = (*p.lock().deref()).tp.ptid;
         pr_debug!("in tp_chkparam,gps = {:p}", tp.gps);
         pr_debug!("in tp_chkparam,prio = {}", prio);
         pr_debug!("in tp_chkparam,ptid = {}", ptid);
@@ -296,11 +296,11 @@ pub fn tp_chkparam(
             || ptid >= CONFIG_RROS_SCHED_TP_NR_PART
         {
             pr_warn!("tp_chkparam error");
-            return Err(kernel::Error::EINVAL);
+            return Err(kernel::error::code::EINVAL);
         }
         // if tp.gps == 0 as *mut RrosTpSchedule{
         //     pr_warn!("in tp_chkparam,tp.gps == 0 as *mut RrosTpSchedule");
-        //     return Err(kernel::Error::EINVAL);
+        //     return Err(kernel::error::code::EINVAL);
         // }
     }
     pr_info!("tp_chkparam success");
@@ -314,10 +314,10 @@ pub fn tp_declare(
     let thread = thread.unwrap();
     // let p = p.unwrap();
     unsafe {
-        let rq = (*thread.locked_data().get()).rq.unwrap();
-        (*thread.locked_data().get()).tp_link =
+        let rq = (*thread.lock().deref()).rq.unwrap();
+        (*thread.lock().deref()).tp_link =
             Some(Node::new(Arc::try_new(SpinLock::new(RrosThread::new()?))?));
-        let tp_link = (*thread.locked_data().get()).tp_link.clone();
+        let tp_link = (*thread.lock().deref()).tp_link.clone();
         (*rq).tp.threads = Some(List::new(Arc::try_new(SpinLock::new(RrosThread::new()?))?));
         if (*rq).tp.threads.clone().as_mut().unwrap().is_empty() {
             pr_debug!("tp.threads is empty!");
@@ -336,20 +336,20 @@ pub fn tp_declare(
 
 pub fn tp_forget(thread: Arc<SpinLock<RrosThread>>) -> Result<usize> {
     unsafe {
-        (*thread.locked_data().get())
+        (*thread.lock().deref())
             .tp_link
             .clone()
             .as_mut()
             .unwrap()
             .remove();
-        (*thread.locked_data().get()).tps = 0 as *mut RrosTpRq;
+        (*thread.lock().deref()).tps = 0 as *mut RrosTpRq;
     }
     Ok(0)
 }
 
 pub fn tp_enqueue(thread: Arc<SpinLock<RrosThread>>) -> Result<i32> {
     unsafe {
-        let head = (*((*thread.locked_data().get()).tps))
+        let head = (*((*thread.lock().deref()).tps))
             .runnable
             .head
             .as_mut()
@@ -358,13 +358,13 @@ pub fn tp_enqueue(thread: Arc<SpinLock<RrosThread>>) -> Result<i32> {
             let node = Node::new(Arc::try_new(SpinLock::new(RrosThread::new()?))?);
             let box_node = Box::try_new(node).unwrap();
             let ptr = Box::into_raw(box_node);
-            (*thread.locked_data().get()).rq_next = Some(NonNull::new(ptr).unwrap());
-            let rq_next = (*thread.locked_data().get()).rq_next.clone();
+            (*thread.lock().deref()).rq_next = Some(NonNull::new(ptr).unwrap());
+            let rq_next = (*thread.lock().deref()).rq_next.clone();
             head.add_head(rq_next.clone().as_mut().unwrap().as_mut().value.clone());
         } else {
             let mut flag = 1;
             for i in head.len()..=1 {
-                let thread_cprio = (*thread.locked_data().get()).cprio;
+                let thread_cprio = (*thread.lock().deref()).cprio;
                 let cprio_in_list = (*head
                     .get_by_index(i)
                     .unwrap()
@@ -375,7 +375,7 @@ pub fn tp_enqueue(thread: Arc<SpinLock<RrosThread>>) -> Result<i32> {
                 .cprio;
                 if thread_cprio <= cprio_in_list {
                     flag = 0;
-                    let rq_next = (*thread.locked_data().get()).rq_next.clone();
+                    let rq_next = (*thread.lock().deref()).rq_next.clone();
                     head.enqueue_by_index(
                         i,
                         rq_next.clone().as_mut().unwrap().as_mut().value.clone(),
@@ -384,7 +384,7 @@ pub fn tp_enqueue(thread: Arc<SpinLock<RrosThread>>) -> Result<i32> {
                 }
             }
             if flag == 1 {
-                let rq_next = (*thread.locked_data().get()).rq_next.clone();
+                let rq_next = (*thread.lock().deref()).rq_next.clone();
                 head.add_head(rq_next.clone().as_mut().unwrap().as_mut().value.clone());
             }
         }
@@ -394,7 +394,7 @@ pub fn tp_enqueue(thread: Arc<SpinLock<RrosThread>>) -> Result<i32> {
 
 pub fn tp_dequeue(thread: Arc<SpinLock<RrosThread>>) {
     unsafe {
-        (*thread.locked_data().get())
+        (*thread.lock().deref())
             .rq_next
             .as_mut()
             .unwrap()
@@ -405,18 +405,18 @@ pub fn tp_dequeue(thread: Arc<SpinLock<RrosThread>>) {
 
 pub fn tp_requeue(thread: Arc<SpinLock<RrosThread>>) {
     unsafe {
-        let head = (*((*thread.locked_data().get()).tps))
+        let head = (*((*thread.lock().deref()).tps))
             .runnable
             .head
             .as_mut()
             .unwrap();
         if head.is_empty() {
-            let rq_next = (*thread.locked_data().get()).rq_next.clone();
+            let rq_next = (*thread.lock().deref()).rq_next.clone();
             head.add_head(rq_next.clone().as_mut().unwrap().as_mut().value.clone());
         } else {
             let mut flag = 1;
             for i in head.len()..=1 {
-                let thread_cprio = (*thread.locked_data().get()).cprio;
+                let thread_cprio = (*thread.lock().deref()).cprio;
                 let cprio_in_list = (*head
                     .get_by_index(i)
                     .unwrap()
@@ -427,7 +427,7 @@ pub fn tp_requeue(thread: Arc<SpinLock<RrosThread>>) {
                 .cprio;
                 if thread_cprio < cprio_in_list {
                     flag = 0;
-                    let rq_next = (*thread.locked_data().get()).rq_next.clone();
+                    let rq_next = (*thread.lock().deref()).rq_next.clone();
                     head.enqueue_by_index(
                         i,
                         rq_next.clone().as_mut().unwrap().as_mut().value.clone(),
@@ -436,7 +436,7 @@ pub fn tp_requeue(thread: Arc<SpinLock<RrosThread>>) {
                 }
             }
             if flag == 1 {
-                let rq_next = (*thread.locked_data().get()).rq_next.clone();
+                let rq_next = (*thread.lock().deref()).rq_next.clone();
                 head.add_head(rq_next.clone().as_mut().unwrap().as_mut().value.clone());
             }
         }
@@ -447,17 +447,17 @@ pub fn tp_pick(rq: Option<*mut rros_rq>) -> Result<Arc<SpinLock<RrosThread>>> {
     let rq = rq.unwrap();
     unsafe {
         let timer = Arc::into_raw((*rq).tp.tf_timer.as_mut().unwrap().clone())
-            as *mut SpinLock<RrosTimer> as *mut RrosTimer;
+            as *mut Pin<Box<SpinLock<RrosTimer>>> as *mut RrosTimer;
         if rros_timer_is_running(timer) == false {
-            return Err(kernel::Error::EINVAL);
+            return Err(kernel::error::code::EINVAL);
         }
         let head = (*(*rq).tp.tps).runnable.head.as_mut().unwrap();
         if head.is_empty() {
-            return Err(kernel::Error::EINVAL);
+            return Err(kernel::error::code::EINVAL);
         }
 
         let __item = head.get_head().unwrap().value.clone();
-        (*__item.locked_data().get())
+        (*__item.lock().deref())
             .rq_next
             .as_mut()
             .unwrap()
@@ -470,7 +470,7 @@ pub fn tp_pick(rq: Option<*mut rros_rq>) -> Result<Arc<SpinLock<RrosThread>>> {
 pub fn tp_migrate(thread: Arc<SpinLock<RrosThread>>, _rq: *mut rros_rq) -> Result<usize> {
     let mut param = RrosSchedParam::new();
     unsafe {
-        param.fifo.prio = (*thread.locked_data().get()).cprio;
+        param.fifo.prio = (*thread.lock().deref()).cprio;
         rros_set_thread_schedparam_locked(
             thread.clone(),
             Some(&RROS_SCHED_FIFO),
@@ -547,7 +547,7 @@ pub fn set_tp_schedule(rq: *mut rros_rq, gps: *mut RrosTpSchedule) -> Result<*mu
                 .unwrap()
                 .value
                 .clone();
-            param.fifo.prio = (*thread.locked_data().get()).cprio;
+            param.fifo.prio = (*thread.lock().deref()).cprio;
             rros_set_thread_schedparam_locked(
                 thread.clone(),
                 Some(&RROS_SCHED_FIFO),
@@ -603,7 +603,7 @@ pub fn tp_control(
     let nr_windows: i32;
 
     if cpu < 0 || !cpu_present(cpu) || !is_threading_cpu(cpu) {
-        return Err(kernel::Error::EINVAL);
+        return Err(kernel::error::code::EINVAL);
     }
 
     rq = rros_cpu_rq(cpu);
@@ -617,7 +617,7 @@ pub fn tp_control(
                     // TODO Sizeof
                     gps = RROS_SYSTEM_HEAP.rros_alloc_chunk((8 + pt.nr_windows * 8) as usize);
                     if gps == None {
-                        return Err(kernel::Error::ENOMEM);
+                        return Err(kernel::error::code::ENOMEM);
                     }
                     let mut gps = gps.unwrap() as *mut RrosTpSchedule;
                     let mut loop_n = 0;
@@ -638,18 +638,18 @@ pub fn tp_control(
                         offset = timespec64_to_ktime(*(*p).offset);
                         if offset != next_offset {
                             RROS_SYSTEM_HEAP.rros_free_chunk(gps as *mut u8);
-                            return Err(kernel::Error::EINVAL);
+                            return Err(kernel::error::code::EINVAL);
                         }
 
                         duration = timespec64_to_ktime(*(*p).duration);
                         if duration <= 0 {
                             RROS_SYSTEM_HEAP.rros_free_chunk(gps as *mut u8);
-                            return Err(kernel::Error::EINVAL);
+                            return Err(kernel::error::code::EINVAL);
                         }
 
                         if (*p).ptid < -1 || (*p).ptid >= CONFIG_RROS_SCHED_TP_NR_PART {
                             RROS_SYSTEM_HEAP.rros_free_chunk(gps as *mut u8);
-                            return Err(kernel::Error::EINVAL);
+                            return Err(kernel::error::code::EINVAL);
                         }
 
                         (*w).w_offset = next_offset;
@@ -702,7 +702,7 @@ pub fn tp_control(
                 return Ok(0);
             }
             4 => (),
-            _ => return Err(kernel::Error::EINVAL),
+            _ => return Err(kernel::error::code::EINVAL),
         }
 
         let gps = get_tp_schedule(rq);
@@ -714,7 +714,7 @@ pub fn tp_control(
 
         if infp == 0 as *mut RrosSchedCtlinfo {
             put_tp_schedule(gps);
-            return Err(kernel::Error::EINVAL);
+            return Err(kernel::error::code::EINVAL);
         }
 
         it = &mut (*infp).tp as *mut RrosTpCtlinfo;

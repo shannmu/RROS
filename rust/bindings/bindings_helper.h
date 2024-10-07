@@ -39,8 +39,14 @@
 #include <uapi/linux/unistd.h>
 #include <linux/capability.h>
 #include <linux/anon_inodes.h>
+#include <linux/if_vlan.h>
+#include <linux/skbuff.h>
+#include <linux/percpu.h>
+#include <linux/fdtable.h>
+#include <linux/platform_device.h>
 
 /* `bindgen` gets confused at certain things. */
 const size_t RUST_CONST_HELPER_ARCH_SLAB_MINALIGN = ARCH_SLAB_MINALIGN;
 const gfp_t RUST_CONST_HELPER_GFP_KERNEL = GFP_KERNEL;
 const gfp_t RUST_CONST_HELPER___GFP_ZERO = __GFP_ZERO;
+const size_t RUST_CONST_HELPER_PAGE_SIZE = PAGE_SIZE;

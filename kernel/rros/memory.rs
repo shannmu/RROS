@@ -3,8 +3,8 @@ use core::{mem::size_of, mem::zeroed};
 use kernel::{
     mm,
     prelude::*,
-    premmpt, rbtree, spinlock_init,
-    sync::{self, SpinLock},
+    premmpt, rbtree, new_spinlock,
+    sync::{self, SpinLock, Arc},
     vmalloc,
 };
 
@@ -18,12 +18,12 @@ use crate::{list, monitor};
 // }
 
 // init_static_sync! {
-//     static A: SpinLock<Test> = Test { a: 10, b: 20 };
+//     static A: Pin<Box<SpinLock<Test>>> = Test { a: 10, b: 20 };
 
 //     /// Documentation for `B`.
-//     pub static B: SpinLock<u32> = 0;
+//     pub static B: Pin<Box<SpinLock<u32>>> = 0;
 
-//     pub(crate) static C: SpinLock<Test> = Test { a: 10, b: 20 };
+//     pub(crate) static C: Pin<Box<SpinLock<Test>>> = Test { a: 10, b: 20 };
 //     // static D: CondVar;
 
 //     // static E: RevocableMutex<Test> = Test { a: 30, b: 40 };
@@ -150,7 +150,7 @@ fn init_system_heap(heap: Arc<SpinLock<RrosHeap>>, sysheap_size_arg: u32) -> Res
     let memptr;
     match vmalloc_res {
         Some(ptr) => memptr = ptr,
-        None => return Err(kernel::Error::ENOMEM),
+        None => return Err(kernel::error::code::ENOMEM),
     }
 
     let res = rros_init_heap(heap, memptr as *mut u8, size);
@@ -177,7 +177,7 @@ fn init_shared_heap(heap: Arc<SpinLock<RrosHeap>>) -> Result<usize> {
     let mem;
     match kzalloc_res {
         Some(ptr) => mem = ptr,
-        None => return Err(kernel::Error::ENOMEM),
+        None => return Err(kernel::error::code::ENOMEM),
     }
 
     let res = rros_init_heap(heap, mem as *mut u8, size);
@@ -201,7 +201,7 @@ fn rros_init_heap(heap: Arc<SpinLock<RrosHeap>>, membase: *mut u8, size: usize) 
 
     mm::page_aligned(size)?;
     if size > RROS_HEAP_MAX_HEAPSZ as usize {
-        return Err(kernel::Error::EINVAL);
+        return Err(kernel::error::code::EINVAL);
     }
 
     let mut op_lock = heap.lock();
@@ -211,7 +211,7 @@ fn rros_init_heap(heap: Arc<SpinLock<RrosHeap>>, membase: *mut u8, size: usize) 
 
     op_lock.lock = unsafe { SpinLock::new(1) };
     let pinned = unsafe { Pin::new_unchecked(&mut op_lock.lock) };
-    spinlock_init!(pinned, "value");
+    new_spinlock!(pinned, "value");
 
     nrpages = size >> RROS_HEAP_PAGE_SHIFT;
     let a: u64 = size_of::<RrosHeapPgentry>() as u64;
@@ -221,7 +221,7 @@ fn rros_init_heap(heap: Arc<SpinLock<RrosHeap>>, membase: *mut u8, size: usize) 
     //         // let ptr_u8 = ptr as *mut u8;
     //         op_lock.rros_heap_pgentry = Arc::try_new(unsafe{*(ptr_u8) as &mut RrosHeapPgentry)})?;
     //     }
-    //     None => return Err(kernel::Error::ENOMEM),
+    //     None => return Err(kernel::error::code::ENOMEM),
     // }
 
     op_lock.membase = Arc::try_new(unsafe { *membase })?;

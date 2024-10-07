@@ -15,16 +15,17 @@ use kernel::{
     endian::be16,
     iov_iter::Iovec,
     ktime::{KtimeT, Timespec64},
-    mutex_init,
     net::{create_socket_callback, CreateSocket, Namespace, NetProtoFamily, Socket},
     prelude::*,
     sock::Sock,
     socket::Sockaddr,
-    spinlock_init, static_init_net_proto_family,
+    static_init_net_proto_family,
     sync::{Mutex, SpinLock},
     types::HlistNode,
     vmalloc::{c_kzalloc, c_kzfree},
     Error,
+    new_spinlock,
+    new_mutex,
 };
 
 use core::{
@@ -91,10 +92,11 @@ pub struct Binding {
     pub vlan_id: u16,
     pub proto_hash: u32,
 }
+
 pub struct RrosSocket {
     pub proto: Option<&'static dyn RrosNetProto>,
     pub efile: RrosFile,
-    pub lock: Mutex<()>,
+    pub lock: Pin<Box<Mutex<(i32)>>>,
     pub net: *mut Namespace,
     pub hash: HlistNode,
     pub input: kernel::bindings::list_head,
@@ -110,7 +112,7 @@ pub struct RrosSocket {
     pub wmem_drain: RrosCrossing,
     pub protocol: be16,
     pub binding: Binding,
-    pub oob_lock: SpinLock<()>,
+    pub oob_lock: Pin<Box<SpinLock<(i32)>>>,
 }
 
 const RROS_SOCKIOC_RECVMSG: u32 = 3226529285;
@@ -387,8 +389,7 @@ no_mangle_function_declaration! {
             unimplemented!();
         }
         rsk.net = unsafe { rust_helper_sock_net((*sock.get_ptr()).sk as *mut Sock as *const Sock) };
-        let pinned = unsafe { Pin::new_unchecked(&mut rsk.lock) };
-        mutex_init!(pinned, "net mutex");
+        rsk.lock = Box::pin_init(new_mutex!(1, "net mutex")).unwrap();
 
         unsafe {
             rust_helper_INIT_LIST_HEAD(&mut rsk.input);
@@ -397,8 +398,7 @@ no_mangle_function_declaration! {
             rsk.wmem_wait.init(&mut RROS_MONO_CLOCK, 0);
         }
         // rros_init_poll_head(&esk->poll_head);
-        let pinned = unsafe { Pin::new_unchecked(&mut rsk.oob_lock) };
-        spinlock_init!(pinned, "net oob spinlock");
+        rsk.oob_lock = Box::pin_init(new_spinlock!(1, "net oob spinlock")).unwrap();
 
         rsk.rmem_max = unsafe { (*sk).sk_rcvbuf };
         rsk.wmem_max = unsafe { (*sk).sk_sndbuf };
@@ -504,7 +504,7 @@ pub fn do_load_iov(iov: *mut Iovec, u_iov: *mut Iovec, iovlen: usize) -> Result<
             iovlen * core::mem::size_of::<Iovec>(),
         ) != 0
         {
-            Err(Error::EFAULT)
+            Err(kernel::error::code::EFAULT)
         } else {
             Ok(())
         }
@@ -517,7 +517,7 @@ pub fn load_iov(u_iov: *mut Iovec, iovlen: usize, fast_iov: *mut Iovec) -> Resul
         do_load_iov(fast_iov, u_iov, iovlen)?;
         Ok(fast_iov)
     } else {
-        Err(Error::EFAULT)
+        Err(kernel::error::code::EFAULT)
     }
 }
 

@@ -11,14 +11,14 @@ use crate::{
 
 use alloc::sync::Arc;
 
-use core::{clone::Clone, ops::FnMut, ptr::NonNull, sync::atomic::AtomicBool};
+use core::{clone::Clone, ops::{Deref, FnMut}, ptr::NonNull, sync::atomic::AtomicBool};
 
 use kernel::{
     bindings, delay,
     ktime::KtimeT,
     linked_list::List,
     prelude::*,
-    sync::{HardSpinlock, Lock, SpinLock},
+    sync::{HardSpinlock, SpinLock},
     Result,
 };
 
@@ -124,7 +124,7 @@ impl RrosWaitQueue {
 
     pub fn locked_add(&mut self, timeout: KtimeT, timeout_mode: timeout::RrosTmode) {
         // rros_add_wait_queue
-        let curr = unsafe { &mut *(*rros_current()).locked_data().get() };
+        let curr = unsafe { &mut *(*rros_current()).lock().deref() };
 
         // assert!(self.lock) //TODO:
         pr_debug!(
@@ -181,13 +181,13 @@ impl RrosWaitQueue {
 
     pub fn wait_schedule(&mut self) -> i32 {
         // rros_wait_schedule
-        let _curr: *mut SpinLock<RrosThread> = rros_current();
+        let _curr: *mut Pin<Box<SpinLock<RrosThread>>> = rros_current();
 
         unsafe { rros_schedule() };
 
         // trace_rros_finish_wait(wq);
 
-        let info = unsafe { (*(*rros_current()).locked_data().get()).info };
+        let info = unsafe { (*(*rros_current()).lock().deref()).info };
         if info & T_RMID != 0 {
             return -(bindings::EIDRM as i32);
         }
@@ -244,7 +244,7 @@ impl RrosWaitQueue {
                     // unsafe{rust_helper_raw_spin_unlock_irqrestore(&mut self.lock as *const _ as *mut bindings::hard_spinlock_t, flags)};
                     self.lock.raw_spin_unlock_irqrestore(flags);
                     ret = self.wait_schedule();
-                    bcast = unsafe { (*(*rros_current()).locked_data().get()).info } & T_BCAST;
+                    bcast = unsafe { (*rros_current()).lock().deref().info } & T_BCAST;
                     // flags = unsafe{rust_helper_raw_spin_lock_irqsave(&mut self.lock as *const _ as *mut bindings::hard_spinlock_t)};
                     flags = self.lock.raw_spin_lock_irqsave();
                     if ret != 0 || get_cond() || bcast != 0 {
@@ -273,7 +273,7 @@ impl RrosWaitQueue {
     //     let curr = rros_current();
 
     // 	// assert_hard_lock(&wq->lock);
-    //     let ref_curr = &mut unsafe{(*(*curr).locked_data().get())};
+    //     let ref_curr = &mut unsafe{(*(*curr).lock().deref())};
     //     if (ref_curr.state & T_WOLI != 0  && rust_helper_atomic_read(&ref_curr.inband_disable_count) > 0){
     //         rros_notify_thread(ref_curr, RROS_HMDIAG_LKSLEEP as u32, RrosValue::new_nil());
     //     }

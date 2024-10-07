@@ -9,7 +9,7 @@ use kernel::{
     prelude::*,
     premmpt::running_inband,
     ptrace::{IrqStage, PtRegs},
-    sync::{Lock, SpinLock},
+    sync::{ SpinLock},
     task::Task,
     uapi::time_types::{KernelOldTimespec, KernelTimespec},
     user_ptr::UserSlicePtr,
@@ -157,8 +157,8 @@ fn invoke_syscall(nr: u32, regs: PtRegs) {
 }
 
 fn prepare_for_signal(
-    _p: *mut SpinLock<RrosThread>,
-    curr: *mut SpinLock<RrosThread>,
+    _p: *mut Pin<Box<SpinLock<RrosThread>>>,
+    curr: *mut Pin<Box<SpinLock<RrosThread>>>,
     regs: PtRegs,
 ) {
     let flags;
@@ -185,16 +185,16 @@ fn prepare_for_signal(
     // * that we have been unblocked from a wait for some other
     // * reason.
     // */
-    let res2 = unsafe { (*(*curr).locked_data().get()).info & T_KICKED != 0 };
+    let res2 = unsafe { (*(*curr).lock().deref()).info & T_KICKED != 0 };
     unsafe {
         if res2 {
             let res1 = Task::current().signal_pending();
 
             if res1 {
                 set_oob_error(regs, -(bindings::ERESTARTSYS as i32));
-                (*(*curr).locked_data().get()).info &= !T_BREAK;
+                (*(*curr).lock().deref()).info &= !T_BREAK;
             }
-            (*(*curr).locked_data().get()).info &= !T_KICKED;
+            (*(*curr).lock().deref()).info &= !T_KICKED;
         }
     }
 
@@ -339,7 +339,7 @@ fn do_oob_syscall(stage: IrqStage, regs: PtRegs) -> i32 {
         bindings::CAP_SYS_NICE as i32,
     ) != 0);
     pr_debug!("curr is {:p} res is {}", curr, res1);
-    if curr == 0 as *mut SpinLock<RrosThread> || res1 {
+    if curr == 0 as *mut Pin<Box<SpinLock<RrosThread>>> || res1 {
         // [TODO: lack RROS_DEBUG]
         pr_err!("ERROR: syscall denied");
         // if (RROS_DEBUG(CORE))
@@ -368,11 +368,11 @@ fn do_oob_syscall(stage: IrqStage, regs: PtRegs) -> i32 {
     if !rros_is_inband() {
         p = rros_current();
         let res1 = Task::current().signal_pending();
-        let res2 = unsafe { (*(*curr).locked_data().get()).info & T_KICKED != 0 };
+        let res2 = unsafe { (*(*curr).lock().deref()).info & T_KICKED != 0 };
         let res3 = (Task::current().state() & T_WEAK) != 0;
         // [TODO: lack covert atomic in bindings to atomic in rfl]
         let res4 = unsafe {
-            (*(*curr).locked_data().get())
+            (*(*curr).lock().deref())
                 .inband_disable_count
                 .atomic_read()
                 != 0
@@ -415,7 +415,7 @@ fn do_inband_syscall(_stage: IrqStage, regs: PtRegs) -> i32 {
      * assume this is an in-band syscall which we need to
      * propagate downstream to the common handler.
      */
-    if curr == 0 as *mut SpinLock<RrosThread> {
+    if curr == 0 as *mut Pin<Box<SpinLock<RrosThread>>> {
         return SYSCALL_PROPAGATE;
     }
 
@@ -452,13 +452,13 @@ fn do_inband_syscall(_stage: IrqStage, regs: PtRegs) -> i32 {
      * in which case the common logic applies (i.e. based on
      * T_KICKED and/or signal_pending()).
      */
-    if ret == Err(kernel::Error::ERESTARTSYS) {
+    if ret == Err(kernel::error::code::ERESTARTSYS) {
         set_oob_error(regs, -(bindings::ERESTARTSYS as i32));
 
-        let res1 = unsafe { (*(*curr).locked_data().get()).local_info };
+        let res1 = unsafe { (*(*curr).lock().deref()).local_info };
         if res1 & T_IGNOVR == 1 {
             unsafe {
-                (*(*curr).locked_data().get()).local_info &= !T_IGNOVR;
+                (*(*curr).lock().deref()).local_info &= !T_IGNOVR;
             }
         }
 
@@ -477,10 +477,10 @@ fn do_inband_syscall(_stage: IrqStage, regs: PtRegs) -> i32 {
     if !rros_is_inband() {
         p = rros_current();
         let res1 = Task::current().signal_pending();
-        let res2 = unsafe { (*(*curr).locked_data().get()).info & T_KICKED != 0 };
+        let res2 = unsafe { (*(*curr).lock().deref()).info & T_KICKED != 0 };
         let res3 = (Task::current().state() & T_WEAK) != 0;
         let res4 = unsafe {
-            (*(*curr).locked_data().get())
+            (*(*curr).lock().deref())
                 .inband_disable_count
                 .atomic_read()
                 != 0
@@ -492,10 +492,10 @@ fn do_inband_syscall(_stage: IrqStage, regs: PtRegs) -> i32 {
         }
     }
 
-    let res1 = unsafe { (*(*curr).locked_data().get()).local_info };
+    let res1 = unsafe { (*(*curr).lock().deref()).local_info };
     if (res1 & T_IGNOVR) != 0 {
         unsafe {
-            (*(*curr).locked_data().get()).local_info &= !T_IGNOVR;
+            (*(*curr).lock().deref()).local_info &= !T_IGNOVR;
         }
     }
 

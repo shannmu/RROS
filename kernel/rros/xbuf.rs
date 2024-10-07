@@ -31,6 +31,7 @@ use kernel::{
     user_ptr::{UserSlicePtrReader, UserSlicePtrWriter},
     vmalloc::c_kzalloc,
     waitqueue,
+    error
 };
 
 #[derive(Default)]
@@ -55,26 +56,18 @@ impl FileOperations for XbufOps {
         file: &File,
         data: &mut T,
         _offset: u64,
-    ) -> Result<usize> {
+    ) -> Result {
         pr_debug!("I'm the read ops of the xbuf factory.");
         let ret = xbuf_read(file, data);
         pr_debug!("the result of xbuf read is {}", ret);
-        if ret < 0 {
-            Err(Error::from_kernel_errno(ret))
-        } else {
-            Ok(ret as usize)
-        }
+        error::to_result(ret)
     }
 
-    fn oob_read<T: IoBufferWriter>(_this: &CloneData, file: &File, data: &mut T) -> Result<usize> {
+    fn oob_read<T: IoBufferWriter>(_this: &CloneData, file: &File, data: &mut T) -> Result {
         pr_debug!("I'm the oob_read ops of the xbuf factory.");
         let ret = xbuf_oob_read(file, data);
         pr_debug!("the result of xbuf oob_read is {}", ret);
-        if ret < 0 {
-            Err(Error::from_kernel_errno(ret))
-        } else {
-            Ok(ret as usize)
-        }
+        error::to_result(ret)
     }
 
     fn write<T: IoBufferReader>(
@@ -82,26 +75,18 @@ impl FileOperations for XbufOps {
         file: &File,
         data: &mut T,
         _offset: u64,
-    ) -> Result<usize> {
+    ) -> Result {
         pr_debug!("I'm the write ops of the xbuf factory.");
         let ret = xbuf_write(file, data);
         pr_debug!("the result of xbuf write is {}", ret);
-        if ret < 0 {
-            Err(Error::from_kernel_errno(ret))
-        } else {
-            Ok(ret as usize)
-        }
+        error::to_result(ret)
     }
 
-    fn oob_write<T: IoBufferReader>(_this: &CloneData, file: &File, data: &mut T) -> Result<usize> {
+    fn oob_write<T: IoBufferReader>(_this: &CloneData, file: &File, data: &mut T) -> Result {
         pr_debug!("I'm the oob_write ops of the xbuf factory.");
         let ret = xbuf_oob_write(file, data);
         pr_debug!("the result of xbuf oob_write is {}", ret);
-        if ret < 0 {
-            Err(Error::from_kernel_errno(ret))
-        } else {
-            Ok(ret as usize)
-        }
+        error::to_result(ret)
     }
 
     fn oob_poll(
@@ -204,17 +189,17 @@ pub struct XbufInbound {
     pub o_event: RrosFlag,
     pub irq_work: IrqWork,
     pub ring: XbufRing,
-    pub lock: SpinLock<i32>,
+    pub lock: Pin<Box<SpinLock<i32>>>,
 }
 
 impl XbufInbound {
     pub fn new() -> Result<Self> {
         Ok(Self {
-            i_event: waitqueue::WaitQueueHead::default(),
+            i_event: waitqueue::WaitQueueHead::new(),
             o_event: RrosFlag::new(),
             irq_work: IrqWork::new(),
             ring: XbufRing::new()?,
-            lock: unsafe { SpinLock::new(0) },
+            lock: unsafe { Box::pin_init(new_spinlock!(0)).unwrap() },
         })
     }
 }
@@ -235,7 +220,7 @@ impl XbufOutbound {
                     RROS_WAIT_PRIO as i32,
                 )
             },
-            o_event: waitqueue::WaitQueueHead::default(),
+            o_event: waitqueue::WaitQueueHead::new(),
             irq_work: IrqWork::new(),
             ring: XbufRing::new()?,
         })
@@ -666,7 +651,7 @@ pub fn inbound_signal_output(ring: &XbufRing, sigpoll: bool) {
 
 pub fn xbuf_read<T: IoBufferWriter>(filp: &File, data: &mut T) -> i32 {
     let fbind: *const RrosFileBinding =
-        unsafe { (*filp.get_ptr()).private_data as *const RrosFileBinding };
+        unsafe { (*filp.as_ptr()).private_data as *const RrosFileBinding };
     let xbuf = unsafe { (*((*fbind).element)).pointer as *mut RrosXbuf };
 
     let mut rd: XbufRdesc = XbufRdesc {
@@ -680,14 +665,14 @@ pub fn xbuf_read<T: IoBufferWriter>(filp: &File, data: &mut T) -> i32 {
         do_xbuf_read(
             &mut (*xbuf).ibnd.ring,
             &mut rd,
-            (*filp.get_ptr()).f_flags.try_into().unwrap(),
+            (*filp.as_ptr()).f_flags.try_into().unwrap(),
         )
     }
 }
 
 pub fn xbuf_write<T: IoBufferReader>(filp: &File, data: &mut T) -> i32 {
     let fbind: *const RrosFileBinding =
-        unsafe { (*filp.get_ptr()).private_data as *const RrosFileBinding };
+        unsafe { (*filp.as_ptr()).private_data as *const RrosFileBinding };
     let xbuf = unsafe { (*((*fbind).element)).pointer as *mut RrosXbuf };
 
     let mut wd: XbufWdesc = XbufWdesc {
@@ -702,7 +687,7 @@ pub fn xbuf_write<T: IoBufferReader>(filp: &File, data: &mut T) -> i32 {
         do_xbuf_write(
             &mut (*xbuf).obnd.ring,
             &mut wd,
-            (*filp.get_ptr()).f_flags.try_into().unwrap(),
+            (*filp.as_ptr()).f_flags.try_into().unwrap(),
         )
     }
 }
@@ -790,7 +775,7 @@ pub fn outbound_signal_output(ring: &XbufRing, _sigpoll: bool) {
 
 pub fn xbuf_oob_read<T: IoBufferWriter>(filp: &File, data: &mut T) -> i32 {
     let fbind: *const RrosFileBinding =
-        unsafe { (*filp.get_ptr()).private_data as *const RrosFileBinding };
+        unsafe { (*filp.as_ptr()).private_data as *const RrosFileBinding };
     let xbuf = unsafe { (*((*fbind).element)).pointer as *mut RrosXbuf };
 
     let mut rd: XbufRdesc = XbufRdesc {
@@ -804,14 +789,14 @@ pub fn xbuf_oob_read<T: IoBufferWriter>(filp: &File, data: &mut T) -> i32 {
         do_xbuf_read(
             &mut (*xbuf).obnd.ring,
             &mut rd,
-            (*filp.get_ptr()).f_flags.try_into().unwrap(),
+            (*filp.as_ptr()).f_flags.try_into().unwrap(),
         )
     }
 }
 
 pub fn xbuf_oob_write<T: IoBufferReader>(filp: &File, data: &mut T) -> i32 {
     let fbind: *const RrosFileBinding =
-        unsafe { (*filp.get_ptr()).private_data as *const RrosFileBinding };
+        unsafe { (*filp.as_ptr()).private_data as *const RrosFileBinding };
     let xbuf = unsafe { (*((*fbind).element)).pointer as *mut RrosXbuf };
 
     let mut wd: XbufWdesc = XbufWdesc {
@@ -825,14 +810,14 @@ pub fn xbuf_oob_write<T: IoBufferReader>(filp: &File, data: &mut T) -> i32 {
         do_xbuf_write(
             &mut (*xbuf).ibnd.ring,
             &mut wd,
-            (*filp.get_ptr()).f_flags.try_into().unwrap(),
+            (*filp.as_ptr()).f_flags.try_into().unwrap(),
         )
     }
 }
 
 fn xbuf_oob_poll(filp: &File, wait: *mut bindings::oob_poll_wait) -> Result<u32> {
     let fbind: *const RrosFileBinding =
-        unsafe { (*filp.ptr).private_data as *const RrosFileBinding };
+        unsafe { (*filp.as_ptr()).private_data as *const RrosFileBinding };
     let xbuf: &mut RrosXbuf = unsafe { &mut *((*((*fbind).element)).pointer as *mut RrosXbuf) };
     let obnd = &xbuf.obnd;
     let ibnd = &xbuf.ibnd;
@@ -918,7 +903,7 @@ pub fn rros_write_xbuf(xbuf: &mut RrosXbuf, buf: *const i8, count: usize, f_flag
 }
 
 fn xbuf_factory_build(
-    fac: &'static mut SpinLock<RrosFactory>,
+    fac: &'static mut Pin<Box<SpinLock<RrosFactory>>>,
     uname: &'static CStr,
     u_attrs: Option<*mut u8>,
     clone_flags: i32,
@@ -927,7 +912,7 @@ fn xbuf_factory_build(
     let attrs = RrosXbufAttrs::from_ptr(u_attrs.unwrap() as *mut RrosXbufAttrs);
     if (clone_flags & !RROS_CLONE_PUBLIC) != 0 {
         pr_err!("this is a wrong value");
-        // return Err(Error::EINVAL);
+        // return Err(kernel::error::code::EINVAL);
     }
 
     let xbuf = RrosXbuf::new();
@@ -937,7 +922,7 @@ fn xbuf_factory_build(
         }
         Err(_e) => {
             pr_err!("new xbuf error");
-            // return Err(Error::ENOMEM);
+            // return Err(kernel::error::code::ENOMEM);
         }
     }
     let boxed_xbuf = Box::try_new(xbuf.unwrap()).unwrap();
@@ -1008,7 +993,7 @@ fn xbuf_factory_build(
     }
 }
 
-pub static mut RROS_XBUF_FACTORY: SpinLock<RrosFactory> = unsafe {
+pub static mut RROS_XBUF_FACTORY: Pin<Box<SpinLock<RrosFactory>>> = unsafe {
     SpinLock::new(RrosFactory {
         name: CStr::from_bytes_with_nul_unchecked("xbuf\0".as_bytes()),
         // fops: Some(RustFileXbuf),

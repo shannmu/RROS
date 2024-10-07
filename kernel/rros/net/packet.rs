@@ -12,25 +12,24 @@ use crate::{
     sched::{rros_disable_preempt, rros_enable_preempt},
     timeout::{RrosTmode, RROS_INFINITE, RROS_NONBLOCK},
 };
-use core::{convert::TryInto, default::Default, mem::transmute, ops::DerefMut, ptr::NonNull, u16};
+use core::{convert::TryInto, default::Default, mem::transmute, ops::{Deref, DerefMut}, ptr::NonNull, u16};
 use kernel::{
     bindings, c_types,
     endian::be16,
-    hash_for_each_possible, if_packet, init_static_sync,
+    hash_for_each_possible, if_packet,
     iov_iter::Iovec,
     ktime::{timespec64_to_ktime, KtimeT, Timespec64},
     prelude::*,
     skbuff,
     socket::Sockaddr,
-    sync::Lock,
     types::*,
     Error, Result,
+    new_spinlock
 };
 
 // protocol hash table
-init_static_sync! {
-    static PROTOCOL_HASHTABLE: kernel::sync::SpinLock<Hashtable::<8>> = Hashtable::<8>::new();
-}
+
+static PROTOCOL_HASHTABLE: kernel::sync::SpinLock<Hashtable::<8>> = Box::pin_init(new_spinlock!(Hashtable::<8>::new())).unwrap();
 
 fn get_protol_hash(protocol: be16) -> u32 {
     extern "C" {
@@ -41,7 +40,7 @@ fn get_protol_hash(protocol: be16) -> u32 {
 }
 
 fn find_rxqueue(hkey: u32) -> Option<NonNull<RrosNetRxqueue>> {
-    let head = unsafe { (*PROTOCOL_HASHTABLE.locked_data().get()).head(hkey) };
+    let head = unsafe { (*PROTOCOL_HASHTABLE.lock().deref()).head(hkey) };
     hash_for_each_possible!(rxq, head, RrosNetRxqueue, hash, {
         if unsafe { (*rxq).hkey } == hkey {
             return NonNull::new(rxq as *mut RrosNetRxqueue);
@@ -90,12 +89,12 @@ impl RrosNetProto for EthernetRrosNetProto {
             queue.lock.lock_noguard();
             unsafe { rust_helper_list_add(&mut sock.next_sub, &mut queue.subscribers) }
             // rros_spin_unlock
-            unsafe { queue.lock.unlock() };
+            unsafe { drop(queue.lock.lock()) };
             rros_enable_preempt();
             // drop q_guard here
         } else {
             let queue = unsafe { &mut *rxq.as_ptr() };
-            unsafe { (*PROTOCOL_HASHTABLE.locked_data().get()).add(&mut queue.hash.0, hkey) };
+            unsafe { (*PROTOCOL_HASHTABLE.lock().deref()).add(&mut queue.hash.0, hkey) };
             unsafe { rust_helper_list_add(&mut sock.next_sub, &mut queue.subscribers) }
         }
         PROTOCOL_HASHTABLE.irq_unlock_noguard(flags);
@@ -122,7 +121,7 @@ impl RrosNetProto for EthernetRrosNetProto {
 
         list_del_init!(&mut sock.next_sub);
         if unsafe { rust_helper_list_empty(&rxq.subscribers) } {
-            unsafe { (*PROTOCOL_HASHTABLE.locked_data().get()).del(&mut rxq.hash.0) };
+            unsafe { (*PROTOCOL_HASHTABLE.lock().deref()).del(&mut rxq.hash.0) };
             list_add!(&mut rxq.next, &mut tmp);
         }
 
@@ -189,7 +188,7 @@ impl RrosNetProto for EthernetRrosNetProto {
             self.detach(sock);
             let ret = self.attach(sock, be16::new(sll.get_mut().sll_protocol));
             if ret != 0 {
-                unsafe { sock.oob_lock.unlock() };
+                unsafe { drop(sock.oob_lock.lock()) };
                 if dev.is_some() {
                     let mut dev = dev.unwrap();
                     dev.put_dev();
@@ -204,7 +203,7 @@ impl RrosNetProto for EthernetRrosNetProto {
             sock.binding.vlan_ifindex = new_ifindex;
         }
         sock.oob_lock.irq_unlock_noguard(flags);
-        unsafe { sock.oob_lock.unlock() };
+        unsafe { drop(sock.oob_lock.lock()) };
         if dev.is_some() {
             let mut dev = dev.unwrap();
             dev.put_dev();
@@ -269,7 +268,7 @@ impl RrosNetProto for EthernetRrosNetProto {
 
         let dev = find_xmit_device(sock, msghdr);
         if dev.is_err() {
-            return -(dev.err().unwrap().to_kernel_errno() as isize);
+            return -(dev.err().unwrap().to_errno() as isize);
         }
         let mut dev = dev.unwrap();
         let mut real_dev = dev.vlan_dev_real_dev();
@@ -281,9 +280,12 @@ impl RrosNetProto for EthernetRrosNetProto {
         }
         let mut skb = skb.unwrap();
         skb.reset_mac_header();
-        skb.protocol = sock.protocol.raw();
         skb.set_dev(real_dev.0.as_ptr());
-        skb.priority = unsafe { (*sock.sk).get_mut().sk_priority };
+        unsafe {
+            skb.0.as_mut().__bindgen_anon_5.headers.as_mut().protocol = sock.protocol.raw();
+            skb.0.as_mut().__bindgen_anon_5.headers.as_mut().protocol = sock.protocol.raw();
+            skb.0.as_mut().__bindgen_anon_5.headers.as_mut().priority = unsafe { (*sock.sk).get_mut().sk_priority };
+        }
         let skb_tailroom = unsafe { rust_helper_skb_tailroom(skb.0.as_ptr()) } as usize;
         let mut rem: usize = 0;
         let count = rros_import_iov(
@@ -308,10 +310,10 @@ impl RrosNetProto for EthernetRrosNetProto {
 
         skb.put(count as u32);
 
-        let skb_protocol = unsafe { be16::new(skb.0.as_ref().protocol) };
+        let skb_protocol = unsafe { be16::new(skb.0.as_ref().__bindgen_anon_5.headers.as_ref().protocol) };
         if skb_protocol == be16::new(0) || skb_protocol == be16::from(bindings::ETH_P_ALL as u16) {
             unsafe {
-                skb.0.as_mut().protocol =
+                skb.0.as_mut().__bindgen_anon_5.headers.as_ref().protocol = 
                     rust_helper_dev_parse_header_protocol(skb.0.as_ptr()).raw();
             }
         }
@@ -465,15 +467,15 @@ fn copy_packet_to_user(
             return -(bindings::EINVAL as isize);
         }
         addr.get_mut().sll_family = bindings::AF_PACKET as u16;
-        addr.get_mut().sll_protocol = skb.protocol;
+        addr.get_mut().sll_protocol = unsafe { skb.0.as_ref().__bindgen_anon_5.headers.as_ref().protocol };
         let dev = skb.dev().unwrap();
         addr.get_mut().sll_ifindex = dev.ifindex();
         addr.get_mut().sll_hatype = unsafe { dev.0.as_ref().type_ };
-        addr.get_mut().sll_pkttype = unsafe { skb.0.as_ref().pkt_type() };
+        addr.get_mut().sll_pkttype = unsafe { skb.0.as_ref().__bindgen_anon_5.headers.as_ref().pkt_type() };
         addr.get_mut().sll_halen = unsafe {
             rust_helper_dev_parse_header(
                 skb.0.as_ptr(),
-                &mut addr.get_mut().sll_addr as *const _ as *mut u8,
+                &mut addr.get_mut().__bindgen_anon_1.sll_addr as *const _ as *mut u8,
             )
         }
         .try_into()
@@ -556,7 +558,7 @@ fn __packet_deliver(rxq: &mut RrosNetRxqueue, skb: &mut RrosSkBuff, protocol: be
 
         rsk = list_next_entry!(rsk, RrosSocket, next_sub);
     }
-    unsafe { rxq.lock.unlock() };
+    unsafe { drop(rxq.lock.lock()) };
 
     delivered
 }
@@ -594,24 +596,24 @@ fn find_xmit_device(rsk: &mut RrosSocket, msghdr: &mut UserOobMsghdr) -> Result<
     let ret =
         unsafe { rust_helper_raw_get_user_64(&mut name_ptr, &mut (*msghdr).name_ptr as *mut u64) };
     if ret != 0 {
-        return Err(Error::EFAULT);
+        return Err(kernel::error::code::EFAULT);
     }
 
     let ret =
         unsafe { rust_helper_raw_get_user(&mut namelen, &mut (*msghdr).name_len as *mut u32) };
     if ret != 0 {
-        return Err(Error::EFAULT);
+        return Err(kernel::error::code::EFAULT);
     }
 
     let dev = if name_ptr == 0 {
         if namelen != 0 {
-            return Err(Error::EINVAL);
+            return Err(kernel::error::code::EINVAL);
         }
         let proto = rsk.proto.unwrap();
         proto.get_netif(rsk)
     } else {
         if namelen < core::mem::size_of::<if_packet::SockaddrLL>() as u32 {
-            return Err(Error::EINVAL);
+            return Err(kernel::error::code::EINVAL);
         }
 
         let u_addr: *mut if_packet::SockaddrLL = unsafe { transmute(name_ptr) };
@@ -624,18 +626,18 @@ fn find_xmit_device(rsk: &mut RrosSocket, msghdr: &mut UserOobMsghdr) -> Result<
             )
         };
         if ret != 0 {
-            return Err(Error::EFAULT);
+            return Err(kernel::error::code::EFAULT);
         }
 
         if addr.get_mut().sll_family != bindings::AF_PACKET as u16
             && addr.get_mut().sll_family != bindings::AF_UNSPEC as u16
         {
-            return Err(Error::EINVAL);
+            return Err(kernel::error::code::EINVAL);
         }
         NetDevice::net_get_dev_by_index(rsk.net, addr.get_mut().sll_ifindex)
     };
     if dev.is_none() {
-        return Err(Error::EFAULT); // TODO: ENXIO
+        return Err(kernel::error::code::EFAULT); // TODO: ENXIO
     }
     Ok(dev.unwrap())
 }

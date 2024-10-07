@@ -19,13 +19,16 @@ mod tests;
 
 extern "Rust" {
     #[rustc_allocator]
-    #[rustc_allocator_nounwind]
+    #[rustc_nounwind]
     fn __rros_sys_heap_alloc(size: usize, align: usize) -> *mut u8;
-    #[rustc_allocator_nounwind]
+    #[rustc_deallocator]
+    #[rustc_nounwind]
     fn __rros_sys_heap_dealloc(ptr: *mut u8, size: usize, align: usize);
-    #[rustc_allocator_nounwind]
+    #[rustc_reallocator]
+    #[rustc_nounwind]
     fn __rros_sys_heap_realloc(ptr: *mut u8, old_size: usize, align: usize, new_size: usize) -> *mut u8;
-    #[rustc_allocator_nounwind]
+    #[rustc_allocator_zeroed]
+    #[rustc_nounwind]
     fn __rros_sys_heap_alloc_zerod(size: usize, align: usize) -> *mut u8;
 }
 #[unstable(feature = "allocator_api", issue = "32838")]

@@ -25,7 +25,7 @@ pub fn rros_net_ether_transmit(dev: &mut NetDevice, skb: &mut RrosSkBuff) -> i32
     let vlan_proto = unsafe { rust_helper_vlan_dev_vlan_proto(dev.0.as_ptr()) };
     let mut vlan_tci =
         unsafe { rust_helper_vlan_dev_vlan_id(dev.0.as_ptr() as *const bindings::net_device) };
-    vlan_tci |= unsafe { rust_helper_vlan_dev_get_egress_qos_mask(dev.0.as_ptr(), skb.priority) };
+    vlan_tci |= unsafe { rust_helper_vlan_dev_get_egress_qos_mask(dev.0.as_ptr(), skb.0.as_ref().__bindgen_anon_5.headers.as_ref().priority) };
     unsafe {
         rust_helper__vlan_hwaccel_put_tag(skb.0.as_ptr(), vlan_proto, vlan_tci);
     }
@@ -33,6 +33,6 @@ pub fn rros_net_ether_transmit(dev: &mut NetDevice, skb: &mut RrosSkBuff) -> i32
     if ret.is_ok() {
         return 0;
     } else {
-        return ret.err().unwrap().to_kernel_errno();
+        return ret.err().unwrap().to_errno();
     }
 }

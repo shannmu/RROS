@@ -1,13 +1,12 @@
-use core::{clone::Clone, ffi::c_void, mem::size_of, ptr::NonNull};
+use core::{clone::Clone, ffi::c_void, mem::size_of, ops::{Deref, DerefMut}, ptr::NonNull};
 
 use kernel::{
-    bindings, c_str, init_static_sync,
+    bindings, c_str,
     linked_list::{GetLinks, Links, List},
     net::Namespace,
     notifier::NotifierBlock,
     prelude::*,
-    spinlock_init,
-    sync::{Lock, SpinLock},
+    sync::{SpinLock, new_spinlock},
     vmalloc, Result,
 };
 
@@ -15,7 +14,7 @@ use super::{skb::RrosSkbQueue, socket::RrosNetdevActivation};
 use crate::{
     crossing::RrosCrossing,
     flags::RrosFlag,
-    net::{input::rros_net_do_rx, skb::rros_net_dev_build_pool},
+    net::{input::rros_net_do_rx, skb::{rros_net_dev_build_pool, RrosSkbQueueInner}},
     thread::KthreadRunner,
     wait::RrosWaitQueue,
 };
@@ -37,9 +36,10 @@ struct ListThreadSafeWrapper(pub List<Box<NetDevice>>);
 unsafe impl Sync for ListThreadSafeWrapper {}
 unsafe impl Send for ListThreadSafeWrapper {}
 
-init_static_sync! {
-    static ACTIVE_PORT_LIST : SpinLock<ListThreadSafeWrapper> = ListThreadSafeWrapper(List::new());
-}
+
+static ACTIVE_PORT_LIST : Pin<Box<SpinLock<ListThreadSafeWrapper>>> = Box::pin_init(new_spinlock!(ListThreadSafeWrapper(List::new()))).unwrap();
+
+
 
 pub fn start_handler_thread(
     func: Box<dyn FnOnce()>,
@@ -253,9 +253,8 @@ impl NetDevice {
             }
             // est.qdisc = //TODO:
 
-            let pinned = unsafe { Pin::new_unchecked(&mut est.rx_queue) };
-            spinlock_init!(pinned, "RrosSkbQueue");
-            unsafe { (*est.rx_queue.locked_data().get()).init() };
+            est.rx_queue = Box::pin_init(new_spinlock!(RrosSkbQueueInner::default(), "RrosSkbQueue")).unwrap();
+            est.rx_queue.lock().deref().init();
             est.rx_flag.init();
 
             let arg1 = NetDevice(real_dev.0.clone());
@@ -286,7 +285,7 @@ impl NetDevice {
 
         let flags = ACTIVE_PORT_LIST.irq_lock_noguard();
         unsafe {
-            (*ACTIVE_PORT_LIST.locked_data().get())
+            (*ACTIVE_PORT_LIST.lock().deref())
                 .0
                 .push_back(Box::try_new(NetDevice(self.0.clone())).unwrap());
         }
@@ -316,12 +315,12 @@ impl NetDevice {
         let vnds = unsafe { self.dev_state_mut().as_mut() };
         // let flags = ACTIVE_PORT_LIST.irqsave_lock();
         // unsafe{
-        //     (*ACTIVE_PORT_LIST.locked_data().get()).remove(index)
+        //     (*ACTIVE_PORT_LIST.lock().deref()).remove(index)
         // }
         // unsafe{
         //     ()
         // }
-        // unsafe{(*ACTIVE_PORT_LIST.locked_data().get()).remove(vnds)};
+        // unsafe{(*ACTIVE_PORT_LIST.lock().deref()).remove(vnds)};
         // ACTIVE_PORT_LIST.irq_unlock_noguard(flags);
         vnds.crossing.pass();
 
@@ -361,7 +360,7 @@ impl NetDevice {
         assert!(ifindex != 0);
         let flags = ACTIVE_PORT_LIST.irq_lock_noguard();
 
-        let list = unsafe { &mut (*ACTIVE_PORT_LIST.locked_data().get()).0 };
+        let list = unsafe { &mut (*ACTIVE_PORT_LIST.lock().deref()).0 };
         let cursor = list.cursor_front();
         while let Some(item) = cursor.current_mut() {
             if core::ptr::eq(item.get_net(), net) && item.ifindex() == ifindex {

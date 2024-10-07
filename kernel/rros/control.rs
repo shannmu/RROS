@@ -13,34 +13,33 @@ use kernel::{
     prelude::*,
     str::CStr,
     sync::SpinLock,
+    new_spinlock
 };
 
 pub const CONFIG_RROS_NR_CONTROL: usize = 0;
 
-pub static mut RROS_CONTROL_FACTORY: SpinLock<RrosFactory> = unsafe {
-    SpinLock::new(RrosFactory {
-        name: CStr::from_bytes_with_nul_unchecked("control\0".as_bytes()),
-        nrdev: CONFIG_RROS_NR_CONTROL,
-        build: None,
-        dispose: None,
-        attrs: None,
-        flags: crate::factory::RrosFactoryType::SINGLE,
-        inside: Some(RrosFactoryInside {
-            type_: DeviceType::new(),
-            class: None,
-            cdev: None,
-            device: None,
-            sub_rdev: None,
-            kuid: None,
-            kgid: None,
-            minor_map: None,
-            index: None,
-            name_hash: None,
-            hash_lock: None,
-            register: None,
-        }),
-    })
-};
+pub static mut RROS_CONTROL_FACTORY: Pin<Box<SpinLock<RrosFactory>>> = Box::pin_init(new_spinlock!(unsafe{RrosFactory {
+    name: CStr::from_bytes_with_nul_unchecked("control\0".as_bytes()),
+    nrdev: CONFIG_RROS_NR_CONTROL,
+    build: None,
+    dispose: None,
+    attrs: None,
+    flags: crate::factory::RrosFactoryType::SINGLE,
+    inside: Some(RrosFactoryInside {
+        type_: DeviceType::new(),
+        class: None,
+        cdev: None,
+        device: None,
+        sub_rdev: None,
+        kuid: None,
+        kgid: None,
+        minor_map: None,
+        index: None,
+        name_hash: None,
+        hash_lock: None,
+        register: None,
+    }),
+}})).unwrap();
 
 pub struct ControlOps;
 
@@ -149,8 +148,8 @@ fn control_ioctl(file: &File, cmd: &mut IoctlCommand) -> Result<i32> {
                     RROS_SHM_SIZE
                 )
             };
-            // ret = cmd.user_slice.take().ok_or(Error::EINVAL).writer();
-            let data = cmd.user_slice.take().ok_or(Error::EINVAL);
+            // ret = cmd.user_slice.take().ok_or(kernel::error::code::EINVAL).writer();
+            let data = cmd.user_slice.take().ok_or(kernel::error::code::EINVAL);
             data.unwrap().writer().write(&info)?;
             Ok(0)
         }
@@ -168,7 +167,7 @@ fn control_mmap(_file: &File, vma: &mut bindings::vm_area_struct) -> Result {
     let len: usize = (vma.vm_end - vma.vm_start) as usize;
 
     if len != unsafe { RROS_SHM_SIZE } {
-        return Err(Error::EINVAL);
+        return Err(kernel::error::code::EINVAL);
     }
 
     remap_pfn_range(

@@ -12,19 +12,20 @@ use kernel::{
     bitmap::{self, bitmap_zalloc},
     c_str, c_types, chrdev, class, device,
     device::DeviceType,
-    file::{self, fd_install, File},
+    file::{self, File},
     file_operations::FileOperations,
     file_operations::{FileOpener, IoctlCommand},
     fs::{self, Filename},
     io_buffer::IoBufferWriter,
     irq_work, kernelh,
     prelude::*,
-    rbtree, spinlock_init,
+    rbtree, new_spinlock,
     str::CStr,
-    sync::{Lock, SpinLock},
+    sync::SpinLock,
     sysfs, types, uidgid,
     uidgid::{KgidT, KuidT},
     workqueue, ThisModule,
+    sync::Arc
 };
 
 extern "C" {
@@ -75,7 +76,7 @@ const RROS_HANDLE_INDEX_MASK: FundleT = RROS_MUTEX_FLCEIL | RROS_MUTEX_FLCLAIM;
 pub struct RrosIndex {
     #[allow(dead_code)]
     rbroot: rbtree::RBTree<u32, u32>, // TODO: modify the u32.
-    lock: SpinLock<i32>,
+    lock: Pin<Box<SpinLock<i32>>>,
     #[allow(dead_code)]
     generator: FundleT,
 }
@@ -154,7 +155,7 @@ pub struct RrosFactory {
     pub nrdev: usize,
     pub build: Option<
         fn(
-            fac: &'static mut SpinLock<RrosFactory>,
+            fac: &'static mut Pin<Box<SpinLock<RrosFactory>>>,
             uname: &'static CStr,
             u_attrs: Option<*mut u8>,
             clone_flags: i32,
@@ -168,7 +169,7 @@ pub struct RrosFactory {
     // pub fops: PhantomData<T>,
 }
 
-pub static mut RROS_FACTORY: SpinLock<RrosFactory> = unsafe {
+pub static mut RROS_FACTORY: Pin<Box<SpinLock<RrosFactory>>> = unsafe {
     SpinLock::new(RrosFactory {
         name: CStr::from_bytes_with_nul_unchecked("RROS_DEV\0".as_bytes()),
         // fops: Some(&Tmpops),
@@ -212,19 +213,19 @@ impl FileOperations for Tmpops {
 
 pub struct RrosElement {
     pub rcu_head: types::RcuHead,
-    pub factory: &'static mut SpinLock<RrosFactory>,
+    pub factory: &'static mut Pin<Box<SpinLock<RrosFactory>>>,
     pub cdev: Option<chrdev::Cdev>,
     pub dev: Option<device::Device>,
     pub devname: Option<fs::Filename>,
     pub minor: u64,
     pub refs: i32,
     pub zombie: bool,
-    pub ref_lock: SpinLock<i32>,
+    pub ref_lock: Pin<Box<SpinLock<i32>>>,
     pub fundle: FundleT,
     pub clone_flags: i32,
     // pub struct rb_node index_node;// TODO: in rfl rb_node is not embedded in the struct.
     pub irq_work: irq_work::IrqWork,
-    pub work: workqueue::Work,
+    pub work: workqueue::Work<i32>,
     pub hash: types::HlistNode,
     pub fpriv: RrosElementfpriv,
     pub pointer: *mut u8,
@@ -295,7 +296,7 @@ impl device::Devnode for FactoryTypeDevnode {
         // TODO: currently we use raw pointer
         let element: Option<&RrosElement> = dev.get_drvdata();
         if let Some(e) = element {
-            let inside = unsafe { (*(e.factory.locked_data().get())).inside.as_ref().unwrap() };
+            let inside = unsafe { (*(e.factory.lock().deref())).inside.as_ref().unwrap() };
             if let Some(uid) = uid {
                 if let Some(e_uid) = inside.kuid.as_ref() {
                     *uid = *e_uid;
@@ -318,9 +319,9 @@ impl device::Devnode for FactoryTypeDevnode {
 
 fn create_element_device(
     e: Rc<RefCell<RrosElement>>,
-    fac: &'static mut SpinLock<RrosFactory>,
+    fac: &'static mut Pin<Box<SpinLock<RrosFactory>>>,
 ) -> Result<usize> {
-    let mut fac_lock = unsafe { (*fac.locked_data().get()).inside.as_mut() };
+    let mut fac_lock = unsafe { (*fac.lock().deref()).inside.as_mut() };
     let mut rdev: class::DevT = class::DevT::new(0);
 
     let _hlen: u64 = fs::hashlen_string(
@@ -341,7 +342,7 @@ fn create_element_device(
             // hash_add(fac->name_hash, &e->hash, hlen);
 
             unsafe {
-                inside.hash_lock.as_ref().unwrap().unlock();
+                drop(inside.hash_lock.as_ref().unwrap().lock());
             }
 
             0
@@ -362,7 +363,7 @@ fn create_element_device(
         // unsafe { bindings::fd_install(e_mut.fpriv.efd.reserved_fd(), filp) };
         // e.fpriv.efd.commit(File{ptr: filp});
         // }
-        fd_install(e_mut.fpriv.efd.reserved_fd(), filp);
+        e_mut.fpriv.efd.fd_install(filp);
         pr_debug!("the address of filp location 8 is {:p}, {:p}", filp, &filp);
     }
 
@@ -387,7 +388,7 @@ fn rros_element_has_coredev(e: Rc<RefCell<RrosElement>>) -> bool {
 
 fn do_element_visibility(
     e: Rc<RefCell<RrosElement>>,
-    fac: &'static mut SpinLock<RrosFactory>,
+    fac: &'static mut Pin<Box<SpinLock<RrosFactory>>>,
     _rdev: &mut class::DevT,
 ) -> Result<usize> {
     // static int do_element_visibility(struct rros_element *e,
@@ -422,7 +423,7 @@ fn do_element_visibility(
     //             None => 1,
     //         };
     //         match fac_res {
-    //             1 => return Err(kernel::Error::EINVAL),
+    //             1 => return Err(kernel::error::code::EINVAL),
     //             _ => return Ok(0),
     //         }
     //         // *rdev = MKDEV(MAJOR(fac->sub_rdev), e->minor);
@@ -463,9 +464,9 @@ fn do_element_visibility(
     // 	 * Create a private user element, passing the real fops so
     // 	 * that FMODE_CAN_READ/WRITE are set accordingly by the vfs.
     // 	 */
-    // let reg = unsafe{(*fac.locked_data().get()).inside.as_mut().unwrap().register.as_mut()};
+    // let reg = unsafe{(*fac.lock().deref()).inside.as_mut().unwrap().register.as_mut()};
     let reg = unsafe {
-        (*fac.locked_data().get())
+        (*fac.lock().deref())
             .inside
             .as_mut()
             .unwrap()
@@ -586,7 +587,7 @@ pub fn bind_file_to_element(
         "the address of fbind.rfile.filp.oob_data is {:p}",
         fbind.rfile.as_ptr()
     );
-    // let ret = rros_open_file(&fbind.efile, filp.get_ptr());
+    // let ret = rros_open_file(&fbind.efile, filp.as_ptr());
     // 	ret = rros_open_file(&fbind->efile, filp);
     // 	if (ret) {
     // 		kfree(fbind);
@@ -625,7 +626,7 @@ pub fn bind_file_to_element(
 
 pub fn rros_create_core_element_device(
     e: Rc<RefCell<RrosElement>>,
-    fac: &'static mut SpinLock<RrosFactory>,
+    fac: &'static mut Pin<Box<SpinLock<RrosFactory>>>,
     name: &'static CStr,
 ) -> Result<usize> {
     let e_clone = e.clone();
@@ -644,7 +645,7 @@ pub fn rros_create_core_element_device(
 }
 
 // This function is implemented in the rros_init_element.
-// fn create_element_class(fac: Arc<&mut SpinLock<RrosFactory>>, this_module: &'static ThisModule) -> Result<usize> {
+// fn create_element_class(fac: Arc<&mut Pin<Box<SpinLock<RrosFactory>>>>, this_module: &'static ThisModule) -> Result<usize> {
 //     let rros_class: class::Class = class::Class::new(this_module, fac.name.as_char_ptr())?;
 //     let minor_map = Some(bitmap_zalloc(fac.nrdev, bindings::GFP_KERNEL));
 //     let rrtype = Some(device::DeviceType::new().name(fac.name.as_char_ptr()));
@@ -652,7 +653,7 @@ pub fn rros_create_core_element_device(
 //         Some(ref mut inside) => {
 //             inside.minor_map = minor_map;
 //             if inside.minor_map == Some(0) {
-//                 return Err(kernel::Error::EINVAL);
+//                 return Err(kernel::error::code::EINVAL);
 //             }
 
 //             inside.class = Some(Arc::try_new(rros_class)?);
@@ -667,14 +668,14 @@ pub fn rros_create_core_element_device(
 //             Ok(0)
 //         }
 //         None => {
-//             Err(kernel::Error::EINVAL)},
+//             Err(kernel::error::code::EINVAL)},
 //     }
 // }
 
 // TODO: The global variable should not use *mut to pass the value.
 pub fn rros_init_element(
     e: Rc<RefCell<RrosElement>>,
-    fac: &'static mut SpinLock<RrosFactory>,
+    fac: &'static mut Pin<Box<SpinLock<RrosFactory>>>,
     clone_flags: i32,
 ) -> Result<usize> {
     let mut minor = 0;
@@ -686,7 +687,7 @@ pub fn rros_init_element(
             loop {
                 let minor_map;
                 if inside.minor_map.is_none() {
-                    return Err(kernel::Error::EINVAL);
+                    return Err(kernel::error::code::EINVAL);
                 }
                 minor_map = inside.minor_map.unwrap();
 
@@ -696,7 +697,7 @@ pub fn rros_init_element(
                 );
                 if minor >= nrdev as u64 {
                     pr_err!("out of factory number");
-                    return Err(kernel::Error::EINVAL);
+                    return Err(kernel::error::code::EINVAL);
                 }
                 if !bitmap::test_and_set_bit(minor, minor_map as *mut c_types::c_ulong) {
                     break;
@@ -707,7 +708,7 @@ pub fn rros_init_element(
         None => 1,
     };
     unsafe {
-        fac.unlock();
+        drop(fac.lock());
     }
     drop(fac_lock);
     let e_clone = e.clone();
@@ -724,7 +725,7 @@ pub fn rros_init_element(
     e_mut.devname = None;
     e_mut.clone_flags = clone_flags;
     let pinned = unsafe { Pin::new_unchecked(&mut e_mut.ref_lock) };
-    spinlock_init!(pinned, "value");
+    new_spinlock!(pinned, "value");
     Ok(0)
 }
 
@@ -741,7 +742,7 @@ fn create_sys_device<T>(
                 dev.devt = rdev;
                 dev.class = inside.class.as_ref().unwrap().get_ptr();
                 dev.type_ = inside.type_.get_ptr();
-                // dev.groups = fac.locked_data().get().attrs.as_mut().unwrap();
+                // dev.groups = fac.lock().deref().attrs.as_mut().unwrap();
             },
             name,
         )
@@ -753,7 +754,7 @@ fn create_sys_device<T>(
 }
 
 fn rros_create_factory(
-    fac: &mut SpinLock<RrosFactory>,
+    fac: &mut Pin<Box<SpinLock<RrosFactory>>>,
     rros_class: Arc<class::Class>,
     chrdev_reg: &mut Pin<Box<chrdev::Registration<NR_FACTORIES>>>,
     this_module: &'static ThisModule,
@@ -791,7 +792,7 @@ fn rros_create_factory(
                 inside.minor_map =
                     Some(bitmap_zalloc(nrdev.try_into().unwrap(), bindings::GFP_KERNEL) as u64);
                 if inside.minor_map == Some(0) {
-                    return Err(kernel::Error::EINVAL);
+                    return Err(kernel::error::code::EINVAL);
                 }
 
                 inside.class = Some(Arc::try_new(class::Class::new(
@@ -911,7 +912,7 @@ fn rros_create_factory(
                 generator: RROS_NO_HANDLE,
             };
             let pinned = unsafe { Pin::new_unchecked(&mut index.lock) };
-            spinlock_init!(pinned, "value");
+            new_spinlock!(pinned, "value");
             inside.index = Some(index);
 
             let mut hashname: [types::HlistHead; NAME_HASH_TABLE_SIZE as usize] =
@@ -920,16 +921,16 @@ fn rros_create_factory(
             inside.name_hash = Some(hashname);
             let mut hash_lock = unsafe { SpinLock::new(0) };
             let pinned = unsafe { Pin::new_unchecked(&mut hash_lock) };
-            spinlock_init!(pinned, "device_name_hash_lock");
+            new_spinlock!(pinned, "device_name_hash_lock");
             inside.hash_lock = Some(hash_lock);
             0
         }
         None => 1,
     };
 
-    unsafe { fac.unlock() };
+    unsafe { drop(fac.lock()) };
     match res {
-        1 => Err(kernel::Error::EINVAL),
+        1 => Err(kernel::error::code::EINVAL),
         _ => Ok(0),
     }
 }
@@ -957,12 +958,12 @@ impl FileOpener<u8> for CloneOps {
             data.ptr = shared as *const u8 as *mut u8;
             let a = KuidT::from_inode_ptr(shared as *const u8);
             let b = KgidT::from_inode_ptr(shared as *const u8);
-            (*thread::RROS_THREAD_FACTORY.locked_data().get())
+            (*thread::RROS_THREAD_FACTORY.lock().deref())
                 .inside
                 .as_mut()
                 .unwrap()
                 .kuid = Some(a);
-            (*thread::RROS_THREAD_FACTORY.locked_data().get())
+            (*thread::RROS_THREAD_FACTORY.lock().deref())
                 .inside
                 .as_mut()
                 .unwrap()
@@ -1018,7 +1019,7 @@ impl FileOperations for CloneOps {
 }
 
 fn create_core_factories(
-    factories: &mut [&mut SpinLock<RrosFactory>],
+    factories: &mut [&mut Pin<Box<SpinLock<RrosFactory>>>],
     nr: usize,
     rros_class: Arc<class::Class>,
     chrdev_reg: &mut Pin<Box<chrdev::Registration<NR_FACTORIES>>>,
@@ -1039,7 +1040,7 @@ pub fn rros_early_init_factories(
     this_module: &'static ThisModule,
 ) -> Result<Pin<Box<chrdev::Registration<NR_FACTORIES>>>> {
     // TODO: move the number of factories to a variable
-    let mut early_factories: [&mut SpinLock<RrosFactory>; 6] = unsafe {
+    let mut early_factories: [&mut Pin<Box<SpinLock<RrosFactory>>>; 6] = unsafe {
         [
             &mut clock::RROS_CLOCK_FACTORY,
             &mut thread::RROS_THREAD_FACTORY,
@@ -1272,7 +1273,7 @@ pub fn ioctl_clone_device(file: &File, _cmd: u32, arg: usize) -> Result<usize> {
     };
     if res != 0 {
         pr_err!("copy from user failed");
-        return Err(Error::EFAULT);
+        return Err(kernel::error::code::EFAULT);
     }
     // let u_req = unsafe{UserSlicePtr::new(arg as *mut c_types::c_void, size_of::<RrosCloneReq>())};
     // let req = u_req.read_all()?;
@@ -1310,7 +1311,7 @@ pub fn ioctl_clone_device(file: &File, _cmd: u32, arg: usize) -> Result<usize> {
     let e: Rc<RefCell<RrosElement>> = if fdname == "xbuf" {
         pr_debug!("ioctl_clone_device: xbuf clone");
         unsafe {
-            (*xbuf::RROS_XBUF_FACTORY.locked_data().get())
+            (*xbuf::RROS_XBUF_FACTORY.lock().deref())
                 .build
                 .unwrap()(
                 &mut xbuf::RROS_XBUF_FACTORY,
@@ -1323,7 +1324,7 @@ pub fn ioctl_clone_device(file: &File, _cmd: u32, arg: usize) -> Result<usize> {
     } else if fdname == "proxy" {
         pr_debug!("ioctl_clone_device: proxy clone");
         unsafe {
-            (*proxy::RROS_PROXY_FACTORY.locked_data().get())
+            (*proxy::RROS_PROXY_FACTORY.lock().deref())
                 .build
                 .unwrap()(
                 &mut proxy::RROS_PROXY_FACTORY,
@@ -1336,7 +1337,7 @@ pub fn ioctl_clone_device(file: &File, _cmd: u32, arg: usize) -> Result<usize> {
     } else {
         pr_debug!("maybe a thread");
         unsafe {
-            (*thread::RROS_THREAD_FACTORY.locked_data().get())
+            (*thread::RROS_THREAD_FACTORY.lock().deref())
                 .build
                 .unwrap()(
                 &mut thread::RROS_THREAD_FACTORY,
@@ -1424,7 +1425,7 @@ pub fn ioctl_clone_device(file: &File, _cmd: u32, arg: usize) -> Result<usize> {
     }
     // pr_debug!("the ret is {}", ret);
     // if ret!=0{
-    // return Err(kernel::Error::EFAULT);
+    // return Err(kernel::error::code::EFAULT);
     // }
     // unsafe{pr_debug!("5 uninit_thread: x ref is {}", Arc::strong_count(&thread::UTHREAD.clone().unwrap()));}
     Ok(0)

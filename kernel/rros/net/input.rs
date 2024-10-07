@@ -4,15 +4,16 @@ use crate::{
     sched::rros_schedule,
 };
 use core::ptr::NonNull;
+use core::ops::Deref;
 use kernel::{
     bindings,
     c_types::c_void,
     endian::be16,
     prelude::*,
-    spinlock_init,
-    sync::{Lock, SpinLock},
+    sync::SpinLock,
     types::HlistNode,
     vmalloc,
+    new_spinlock,
 };
 
 // pub struct RROSNetHandler{
@@ -23,7 +24,7 @@ pub struct RrosNetRxqueue {
     pub hkey: u32,
     pub hash: HlistNode,
     pub subscribers: bindings::list_head,
-    pub lock: SpinLock<()>,
+    pub lock: Pin<Box<SpinLock<()>>>,
     pub next: bindings::list_head,
 }
 
@@ -40,8 +41,10 @@ impl RrosNetRxqueue {
         let ptr = unsafe { &mut *(ptr.unwrap() as *const _ as *mut RrosNetRxqueue) };
         ptr.hkey = hkey;
         unsafe { rust_helper_INIT_LIST_HEAD(&mut ptr.subscribers) };
-        let pinned = unsafe { core::pin::Pin::new_unchecked(&mut ptr.lock) };
-        spinlock_init!(pinned, "RrosNetRxqueue");
+
+        let spinlock = new_spinlock!((), "RrosNetRxqueue");
+        let pinned = Box::pin_init(spinlock).unwrap();
+        ptr.lock = pinned;
         NonNull::new(ptr)
     }
 
@@ -72,7 +75,7 @@ pub fn rros_net_do_rx(mut dev: NetDevice) {
             break;
         }
         let flags = est.rstate.rx_queue.irq_lock_noguard();
-        if !unsafe { (*est.rstate.rx_queue.locked_data().get()).move_queue(&mut list) } {
+        if !unsafe { (*est.rstate.rx_queue.lock().deref()).move_queue(&mut list) } {
             est.rstate.rx_queue.irq_unlock_noguard(flags);
             continue;
         }
@@ -114,7 +117,9 @@ fn netif_oob_deliver(skb: *mut bindings::sk_buff) -> bool {
         fn rust_helper_eth_type_vlan(eth_type: be16) -> bool;
     }
     let skb = RrosSkBuff::from_raw_ptr(skb);
-    let protocol: u32 = u16::from(be16::new(skb.protocol)).into();
+    unsafe{
+        let protocol: u32 = u16::from(be16::new(skb.0.as_ref().__bindgen_anon_5.headers.as_ref().protocol)).into();
+    }
     pr_debug!("protocol is {}", protocol);
     match protocol {
         bindings::ETH_P_IP => {
@@ -127,7 +132,7 @@ fn netif_oob_deliver(skb: *mut bindings::sk_buff) -> bool {
              * For those adapters without hw-accelerated VLAN
              * capabilities, check the ethertype directly.
              */
-            if unsafe { rust_helper_eth_type_vlan(be16::new(skb.protocol)) } {
+            if unsafe { rust_helper_eth_type_vlan(be16::new(skb.0.as_ref().__bindgen_anon_5.headers.as_ref().protocol)) } {
                 pr_debug!("true");
                 rros_net_ether_accept(skb)
             } else {
@@ -151,7 +156,7 @@ pub fn rros_net_receive(mut skb: RrosSkBuff, handler: fn(skb: RrosSkBuff)) {
 
     let rst = unsafe { skb.dev().unwrap().dev_state_mut().as_mut() };
     let flags = rst.rstate.rx_queue.irq_lock_noguard();
-    unsafe { (*rst.rstate.rx_queue.locked_data().get()).add(&mut skb) };
+    unsafe { (*rst.rstate.rx_queue.lock().deref()).add(&mut skb) };
     rst.rstate.rx_queue.irq_unlock_noguard(flags);
 
     if unsafe { !rust_helper_running_inband() } {

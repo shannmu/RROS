@@ -161,8 +161,8 @@ fn add_measurement_sample(runner: &mut KthreadRunner, timestamp: ktime::KtimeT) 
 
     while delta > 0 && delta > (ktime::ktime_to_ns(period) as u64) {
         /* period > 0 */
-        // let pexpect_ticks = unsafe{(*timer.locked_data().get()).get_pexpect_ticks() + 1};
-        // unsafe{(*timer.locked_data().get()).set_pexpect_ticks(pexpect_ticks);}
+        // let pexpect_ticks = unsafe{(*timer.lock().deref()).get_pexpect_ticks() + 1};
+        // unsafe{(*timer.lock().deref()).set_pexpect_ticks(pexpect_ticks);}
         state.ideal = ktime::ktime_add(state.ideal as i64, period) as u64;
         delta -= ktime::ktime_to_ns(period) as u64;
     }

@@ -11,6 +11,6 @@ use core::{
 };
 use kernel::{
     bindings, c_types, cpumask::CpumaskT, double_linked_list::*, file_operations::FileOperations,
-    ktime::*, percpu, percpu_defs, prelude::*, premmpt, spinlock_init, str::CStr, sync::Guard,
-    sync::Lock, sync::SpinLock, sysfs, timekeeping,
+    ktime::*, percpu, percpu_defs, prelude::*, premmpt, new_spinlock, str::CStr, sync::Guard,
+    sync::SpinLock, sysfs, timekeeping,
 };

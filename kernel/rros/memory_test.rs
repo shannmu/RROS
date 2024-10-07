@@ -1,5 +1,5 @@
 use kernel::{
-    container_of, memory_rros::*, memory_rros_test::*, prelude::*, rbtree::RBTree, vmalloc,
+    container_of, memory_rros::*, memory_rros_test::*, prelude::*, rbtree::RBTree, vmalloc, sync::Arc
 };
 
 use alloc::alloc::*;
@@ -124,7 +124,7 @@ pub fn mem_test2() -> Result<usize> {
     let memptr;
     match vmalloc_res {
         Some(ptr) => memptr = ptr,
-        None => return Err(kernel::Error::ENOMEM),
+        None => return Err(kernel::error::code::ENOMEM),
     }
     let xxx = memptr as *mut MemTestxy;
     unsafe {

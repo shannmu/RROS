@@ -12,7 +12,7 @@
 //! Importing necessary features and modules
 
 use kernel::{
-    bindings, c_types, chrdev, cpumask, dovetail, irqstage, percpu, prelude::*, str::CStr, task,
+    bindings, c_types, chrdev, cpumask, dovetail, irqstage, percpu, prelude::*, str::CStr, task, error
 };
 
 // use kernel::sync::Arc;
@@ -94,17 +94,17 @@ module! {
     // params: {
     //     oobcpus_arg: str {
     //         default: "0\0",
-    //         permissions: 0o444,
+    //         // permissions: 0o444,
     //         description: "which cpus in the oob",
     //     },
     //     init_state_arg: str {
     //         default: "enabled",
-    //         permissions: 0o444,
+    //         // permissions: 0o444,
     //         description: "inital state of rros",
     //     },
     //     sysheap_size_arg: u32{
     //         default: 0,
-    //         permissions: 0o444,
+    //         // permissions: 0o444,
     //         description: "system heap size",
     //     },
     // },
@@ -185,7 +185,7 @@ fn init_core() -> Result<Pin<Box<chrdev::Registration<{ factory::NR_FACTORIES }>
         Ok(_o) => (),
         Err(_e) => {
             pr_warn!("rros cannot be enabled");
-            return Err(kernel::Error::EINVAL);
+            return Err(kernel::error::code::EINVAL);
         }
     }
     pr_info!("hella");
@@ -334,20 +334,21 @@ fn test_lantency() {
 // impl KernelModule for Rros {
 impl kernel::Module for Rros {
     fn init() -> Result<Self> {
-        let curr = task::Task::current_ptr();
+        let curr = task::Task::current_raw();
         unsafe {
             bindings::set_cpus_allowed_ptr(curr, cpumask::CpumaskT::from_int(1).as_cpumas_ptr());
         }
         pr_info!("Hello world from rros!\n");
-        let init_state_arg_str = str::from_utf8(init_state_arg.read())?;
+        let init_state_arg_str = "enable";
+        // let init_state_arg_str = str::from_utf8(init_state_arg.read())?;
         setup_init_state(init_state_arg_str);
 
         if RROS_RUNSTATE.load(Ordering::Relaxed) != RrosRunStates::RrosStateWarmup as u8 {
             pr_warn!("disabled on kernel command line\n");
-            return Err(kernel::Error::EINVAL);
+            return Err(kernel::error::code::EINVAL);
         }
 
-        let cpu_online_mask = unsafe { cpumask::read_cpu_online_mask() };
+        let cpu_online_mask = unsafe { cpumask::CpumaskT::read_cpu_online_mask() };
         // When size_of is 0, align_of is 4, alloc reports an error.
         // unsafe {RROS_MACHINE_CPUDATA =
         //     percpu::alloc_per_cpu(size_of::<RrosMachineCpuData>() as usize,
@@ -356,27 +357,44 @@ impl kernel::Module for Rros {
             RROS_MACHINE_CPUDATA =
                 percpu::alloc_per_cpu(4 as usize, 4 as usize) as *mut RrosMachineCpuData
         };
-        if str::from_utf8(oobcpus_arg.read())? != "" {
-            let res = unsafe {
-                cpumask::cpulist_parse(
-                    CStr::from_bytes_with_nul(oobcpus_arg.read())?.as_char_ptr(),
-                    RROS_OOB_CPUS.as_cpumas_ptr(),
-                )
-            };
-            match res {
-                Ok(_o) => (pr_info!("load parameters {}\n", str::from_utf8(oobcpus_arg.read())?)),
-                Err(_e) => {
-                    pr_warn!("wrong oobcpus_arg");
-                    unsafe {
-                        cpumask::cpumask_copy(RROS_OOB_CPUS.as_cpumas_ptr(), &cpu_online_mask);
-                    }
+        let sysheap_size_arg = 0;
+        let oobcpus_arg = "0\0";
+        
+        let res = unsafe {
+            RROS_OOB_CPUS.cpulist_parse(
+                CStr::from_bytes_with_nul(oobcpus_arg.as_bytes())?.as_char_ptr()
+            )
+        };
+        match res {
+            Ok(_o) => (pr_info!("load parameters {}\n", oobcpus_arg)),
+            Err(_e) => {
+                pr_warn!("wrong oobcpus_arg");
+                unsafe {
+                    RROS_OOB_CPUS.cpumask_copy( &cpu_online_mask);
                 }
             }
-        } else {
-            unsafe {
-                cpumask::cpumask_copy(RROS_OOB_CPUS.as_cpumas_ptr(), &cpu_online_mask);
-            }
         }
+        // if str::from_utf8(oobcpus_arg.read())? != "" {
+        //     let res = unsafe {
+        //         cpumask::cpulist_parse(
+        //             CStr::from_bytes_with_nul(oobcpus_arg.read())?.as_char_ptr(),
+        //             RROS_OOB_CPUS.as_cpumas_ptr(),
+        //         )
+        //     };
+        //     match res {
+        //         Ok(_o) => (pr_info!("load parameters {}\n", str::from_utf8(oobcpus_arg.read())?)),
+        //         Err(_e) => {
+        //             pr_warn!("wrong oobcpus_arg");
+        //             unsafe {
+        //                 RROS_OOB_CPUS.cpumask_copy( &cpu_online_mask);
+        //             }
+        //         }
+        //     }
+        // } else {
+        //     unsafe {
+        //         RROS_OOB_CPUS.cpumask_copy( &cpu_online_mask);
+        //     }
+        // }
 
         let res = init_core(); //*sysheap_size_arg.read()
         let fac_reg;

@@ -12,6 +12,7 @@ mod pin_data;
 mod pinned_drop;
 mod vtable;
 mod zeroable;
+mod no_mangle;
 
 use proc_macro::TokenStream;
 
@@ -19,6 +20,30 @@ use proc_macro::TokenStream;
 ///
 /// The `type` argument should be a type which implements the [`Module`]
 /// trait. Also accepts various forms of kernel metadata.
+///
+/// The `params` field describe module parameters. Each entry has the form
+///
+/// ```ignore
+/// parameter_name: type {
+///     default: default_value,
+///     description: "Description",
+/// }
+/// ```
+///
+/// `type` may be one of
+///
+/// - `i8`
+/// - `u8`
+/// - `i8`
+/// - `u8`
+/// - `i16`
+/// - `u16`
+/// - `i32`
+/// - `u32`
+/// - `i64`
+/// - `u64`
+/// - `isize`
+/// - `usize`
 ///
 /// C header: [`include/linux/moduleparam.h`](srctree/include/linux/moduleparam.h)
 ///
@@ -35,18 +60,13 @@ use proc_macro::TokenStream;
 ///     author: "Rust for Linux Contributors",
 ///     description: "My very own kernel module!",
 ///     license: "GPL",
+///     alias: ["alternate_module_name"],
 ///     params: {
-///        my_i32: i32 {
-///            default: 42,
-///            permissions: 0o000,
-///            description: "Example of i32",
-///        },
-///        writeable_i32: i32 {
-///            default: 42,
-///            permissions: 0o644,
-///            description: "Example of i32",
-///        },
-///    },
+///         my_parameter: i64 {
+///             default: 1,
+///             description: "This parameter has a default of 1",
+///         },
+///     },
 /// }
 ///
 /// struct MyModule;
@@ -62,6 +82,7 @@ use proc_macro::TokenStream;
 ///         // If the parameter is read only, it can be read without locking
 ///         // the kernel parameters:
 ///         pr_info!("i32 param is:  {}\n", my_i32.read());
+///         pr_info!("i32 param is:  {}\n", module_parameters::my_parameter::read());
 ///         Ok(Self)
 ///     }
 /// }
@@ -84,7 +105,7 @@ pub fn module(ts: TokenStream) -> TokenStream {
 /// Linux's use of pure vtables is very close to Rust traits, but they differ
 /// in how unimplemented functions are represented. In Rust, traits can provide
 /// default implementation for all non-required methods (and the default
-/// implementation could just return `Error::EINVAL`); Linux typically use C
+/// implementation could just return `error::code::EINVAL`); Linux typically use C
 /// `NULL` pointers to represent these functions.
 ///
 /// This attribute closes that gap. A trait can be annotated with the
@@ -404,4 +425,10 @@ pub fn paste(input: TokenStream) -> TokenStream {
 #[proc_macro_derive(Zeroable)]
 pub fn derive_zeroable(input: TokenStream) -> TokenStream {
     zeroable::derive(input)
+}
+
+/// Declare a function with the #[no_mangle] attribute and do not need to use [`bindings`] in the parameters' types.
+#[proc_macro]
+pub fn no_mangle_function_declaration(ts: TokenStream) -> TokenStream {
+    no_mangle::no_mangle_function_declaration(ts)
 }

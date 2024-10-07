@@ -118,3 +118,18 @@ unsafe impl super::Backend for MutexBackend {
         unsafe { bindings::mutex_unlock(ptr) };
     }
 }
+
+
+/// Call `Linux` mutex_lock.
+pub fn mutex_lock(lock: *mut bindings::mutex) {
+    unsafe {
+        bindings::mutex_lock(lock);
+    }
+}
+
+/// Call `Linux` mutex_unlock.
+pub fn mutex_unlock(lock: *mut bindings::mutex) {
+    unsafe {
+        bindings::mutex_unlock(lock);
+    }
+}

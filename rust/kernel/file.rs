@@ -11,7 +11,7 @@ use crate::{
     error::{code::*, Error, Result},
     types::{ARef, AlwaysRefCounted, NotThreadSafe, Opaque},
 };
-use core::ptr;
+use core::{ptr,mem::ManuallyDrop, ops::Deref};
 
 /// Flags associated with a [`File`].
 pub mod flags {
@@ -202,6 +202,10 @@ impl File {
         unsafe { &*ptr.cast() }
     }
 
+    pub fn from_raw(ptr: *mut bindings::file) -> Self {
+        unsafe{File(Opaque::new(*ptr.cast()))}
+    }
+
     /// Returns a raw pointer to the inner C struct.
     #[inline]
     pub fn as_ptr(&self) -> *mut bindings::file {
@@ -245,6 +249,36 @@ unsafe impl AlwaysRefCounted for File {
         // SAFETY: To call this method, the caller passes us ownership of a normal refcount, so we
         // may drop it. The cast is okay since `File` has the same representation as `struct file`.
         unsafe { bindings::fput(obj.cast().as_ptr()) }
+    }
+}
+
+/// A wrapper for [`File`] that doesn't automatically decrement the refcount when dropped.
+///
+/// We need the wrapper because [`ManuallyDrop`] alone would allow callers to call
+/// [`ManuallyDrop::into_inner`]. This would allow an unsafe sequence to be triggered without
+/// `unsafe` blocks because it would trigger an unbalanced call to `fput`.
+///
+/// # Invariants
+///
+/// The wrapped [`File`] remains valid for the lifetime of the object.
+pub(crate) struct FileRef(ManuallyDrop<File>);
+
+impl FileRef {
+    /// Constructs a new [`struct file`] wrapper that doesn't change its reference count.
+    ///
+    /// # Safety
+    ///
+    /// The pointer `ptr` must be non-null and valid for the lifetime of the object.
+    pub(crate) unsafe fn from_ptr(ptr: *mut bindings::file) -> Self {
+        Self(ManuallyDrop::new(File::from_raw(ptr)))
+    }
+}
+
+impl Deref for FileRef {
+    type Target = File;
+
+    fn deref(&self) -> &Self::Target {
+        self.0.deref()
     }
 }
 
@@ -333,5 +367,23 @@ impl From<BadFdError> for Error {
 impl core::fmt::Debug for BadFdError {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.pad("EBADF")
+    }
+}
+
+/// Wraps the kernel's `struct files_struct`.
+#[repr(transparent)]
+pub struct FilesStruct {
+    ptr: *mut bindings::files_struct,
+}
+
+impl FilesStruct {
+    /// Returns a `FilesStruct` struct from a non-null and valid pointer.
+    pub fn from_ptr(ptr: *mut bindings::files_struct) -> Self {
+        Self { ptr }
+    }
+
+    /// Get self's `ptr`.
+    pub fn get_ptr(&self) -> *mut bindings::files_struct {
+        self.ptr
     }
 }

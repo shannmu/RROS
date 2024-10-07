@@ -42,9 +42,8 @@ use kernel::{
     ktime::{self, timespec64_to_ktime, Timespec64},
     linked_list::{GetLinks, Links, List},
     prelude::*,
-    rbtree, spinlock_init,
+    rbtree, new_spinlock,
     str::CStr,
-    sync::Lock,
     sync::SpinLock,
     user_ptr::UserSlicePtr,
     Error,
@@ -66,7 +65,7 @@ pub const RROS_POLIOC_WAIT: u32 = kernel::ioctl::_IOWR::<(i64, i64, i64)>(RROS_P
 pub struct RrosPollGroup {
     pub item_index: rbtree::RBTree<u32, Arc<RrosPollItem>>,
     pub item_list: List<Arc<RrosPollItem>>,
-    pub waiter_list: SpinLock<List<Arc<RrosPollWaiter>>>,
+    pub waiter_list: Pin<Box<SpinLock<List<Arc<RrosPollWaiter>>>>>,
     pub rfile: RrosFile,
     // pub item_lock: mutex::RrosKMutex,
     pub nr_items: i32,
@@ -88,7 +87,7 @@ impl RrosPollGroup {
 
     pub fn init(&mut self) {
         let pinned = unsafe { Pin::new_unchecked(&mut self.waiter_list) };
-        spinlock_init!(pinned, "RrosPollGroup::waiter_list");
+        new_spinlock!(pinned, "RrosPollGroup::waiter_list");
         //FIXME: init kmutex fail
         // rros_init_kmutex(&mut item_lock as *mut RrosKMutex);
     }
@@ -154,7 +153,7 @@ impl RrosPollWaiter {
 }
 
 pub struct RrosPollHead {
-    pub watchpoints: SpinLock<list_head>,
+    pub watchpoints: Pin<Box<SpinLock<list_head>>>,
 }
 
 impl RrosPollHead {
@@ -165,8 +164,8 @@ impl RrosPollHead {
     }
 
     pub fn init(&mut self) {
-        init_list_head!(self.watchpoints.locked_data().get());
-        spinlock_init!(
+        init_list_head!(self.watchpoints.lock().deref());
+        new_spinlock!(
             unsafe { Pin::new_unchecked(&mut self.watchpoints) },
             "RrosPollHead"
         );
@@ -341,7 +340,7 @@ fn connect_watchpoint(
             poco.events_received = 0;
             list_add!(
                 &mut poco.next,
-                head.as_ref().watchpoints.locked_data().get()
+                head.as_ref().watchpoints.lock().deref()
             );
             poco.index = i as i32;
             return;
@@ -379,7 +378,7 @@ pub fn __rros_signal_poll_events(head: &mut RrosPollHead, events: i32) -> () {
     flags = head.watchpoints.irq_lock_noguard();
     list_for_each_entry!(
         poco,
-        &*head.watchpoints.locked_data().get(),
+        &*head.watchpoints.lock().deref(),
         RrosPollConnector,
         {
             unsafe {
@@ -401,7 +400,7 @@ pub fn __rros_signal_poll_events(head: &mut RrosPollHead, events: i32) -> () {
 }
 
 pub fn rros_signal_poll_events(head: &mut RrosPollHead, events: i32) {
-    if !list_empty!(head.watchpoints.locked_data().get() as *const list_head) {
+    if !list_empty!(head.watchpoints.lock().deref() as *const list_head) {
         __rros_signal_poll_events(head, events);
     }
 }
@@ -418,7 +417,7 @@ fn check_no_loop_deeper(origin: &File, item: &RrosPollItem, depth: i32) -> Resul
     );
     pr_debug!("poll: check_no_loop_deeper: item.fd is {}", item.fd);
     if depth >= POLLER_NEST_MAX {
-        return Err(Error::ELOOP);
+        return Err(kernel::error::code::ELOOP);
     }
 
     'outer: loop {
@@ -435,7 +434,7 @@ fn check_no_loop_deeper(origin: &File, item: &RrosPollItem, depth: i32) -> Resul
                         break 'outer;
                     }
                     if (*rfilp.filp).private_data == (*origin.ptr).private_data {
-                        ret = Err(Error::ELOOP);
+                        ret = Err(kernel::error::code::ELOOP);
                         break 'outer;
                     }
                     //TODO: not sure if here need offset(8). figure it out
@@ -500,7 +499,7 @@ fn add_item(filp: &File, group: &mut RrosPollGroup, creq: RrosPollCtlreq) -> Res
                     rfilp = unsafe { f.as_mut() };
                 }
                 None => {
-                    ret = Err(Error::EBADF);
+                    ret = Err(kernel::error::code::EBADF);
                     break 'fail_get;
                 }
             }
@@ -551,7 +550,7 @@ fn del_item(group: &mut RrosPollGroup, creq: RrosPollCtlreq) -> Result<i32> {
         Some(a) => item = a,
         None => {
             // rros_unlock_kmutex(&mut group.item_lock as *mut RrosKMutex);
-            return Err(Error::ENOENT);
+            return Err(kernel::error::code::ENOENT);
         }
     }
 
@@ -622,7 +621,7 @@ fn mod_item(group: &mut RrosPollGroup, creq: RrosPollCtlreq) -> Result<i32> {
         }
         None => {
             // rros_unlock_kmutex(&mut group.item_lock as *mut RrosKMutex);
-            return Err(Error::ENOENT);
+            return Err(kernel::error::code::ENOENT);
         }
     }
     group.new_generation();
@@ -644,7 +643,7 @@ fn setup_item(filp: &File, group: &mut RrosPollGroup, creq: RrosPollCtlreq) -> R
             ret = mod_item(group, creq);
         }
         _ => {
-            ret = Err(Error::EINVAL);
+            ret = Err(kernel::error::code::EINVAL);
         }
     }
     ret
@@ -656,7 +655,7 @@ fn collect_events(
     maxevents: i32,
     flag: &Option<Rc<RefCell<RrosFlag>>>,
 ) -> Result<i32> {
-    let mut curr = unsafe { &mut *(*rros_current()).locked_data().get() };
+    let mut curr = unsafe { &mut *(*rros_current()).lock().deref() };
     let mut n: usize;
     let nr: usize;
     let mut count: i32 = 0;
@@ -672,7 +671,7 @@ fn collect_events(
     nr = group.nr_items as usize;
     if nr == 0 {
         // rros_lock_kmutex(&mut group.item_lock as *mut RrosKMutex);
-        return Err(Error::EINVAL);
+        return Err(kernel::error::code::EINVAL);
     }
     'stale: loop {
         'collect: loop {
@@ -800,7 +799,7 @@ fn collect_events(
                             )
                             .is_err()
                         {
-                            return Err(Error::EFAULT);
+                            return Err(kernel::error::code::EFAULT);
                         }
                     }
 
@@ -818,11 +817,11 @@ fn collect_events(
     // rros_lock_kmutex(&mut group.item_lock as *mut RrosKMutex);
     group.new_generation();
     // rros_unlock_kmutex(&mut group.item_lock as *mut RrosKMutex);
-    return Err(Error::EBADF);
+    return Err(kernel::error::code::EBADF);
 }
 
 fn clear_wait() {
-    let curr: &mut RrosThread = unsafe { &mut *(*rros_current()).locked_data().get() };
+    let curr: &mut RrosThread = unsafe { &mut *(*rros_current()).lock().deref() };
     let mut wpt: &mut RrosPollWatchpoint;
     let mut flags: u64;
     let mut n: i32;
@@ -869,7 +868,7 @@ fn wait_events(
     let mut count: Result<i32>;
 
     if wreq.nrset < 0 {
-        return Err(Error::EINVAL);
+        return Err(kernel::error::code::EINVAL);
     }
     if wreq.nrset == 0 {
         return Ok(0);
@@ -882,8 +881,8 @@ fn wait_events(
         'unwait: loop {
             count = collect_events(group, u_set, wreq.nrset, &waiter.flag);
             if (count.is_ok() && count.unwrap() > 0)
-                || count == Err(Error::EFAULT)
-                || count == Err(Error::EBADF)
+                || count == Err(kernel::error::code::EFAULT)
+                || count == Err(kernel::error::code::EBADF)
             {
                 break 'unwait;
             }
@@ -893,7 +892,7 @@ fn wait_events(
 
             unsafe {
                 if (*filp.ptr).f_flags & bindings::O_NONBLOCK != 0 {
-                    count = Err(Error::EAGAIN);
+                    count = Err(kernel::error::code::EAGAIN);
                     break 'unwait;
                 }
             }
@@ -905,7 +904,7 @@ fn wait_events(
                 tmode = RrosTmode::RrosRel;
             }
 
-            let waiter_list = unsafe { &mut *group.waiter_list.locked_data().get() };
+            let waiter_list = unsafe { &mut *group.waiter_list.lock().deref() };
             let arc_waiter = Arc::try_new(waiter).unwrap();
             flags = group.waiter_list.irq_lock_noguard();
             waiter_list.push_front(arc_waiter.clone());
@@ -919,7 +918,7 @@ fn wait_events(
                 count = collect_events(group, u_set, wreq.nrset, &mut None);
             } else {
                 // error code is `num`
-                count = Err(Error::from_kernel_errno(num));
+                count = Err(Error::from_errno(num));
             }
             break;
         }
@@ -937,10 +936,10 @@ fn poll_open(filp: &File) -> Result<Box<RefCell<RrosPollGroup>>> {
     if let Ok(g) = Box::try_new(RefCell::new(RrosPollGroup::new())) {
         group = g;
     } else {
-        return Err(Error::ENOMEM);
+        return Err(kernel::error::code::ENOMEM);
     }
     if rros_open_file(&mut group.get_mut().rfile, filp.ptr).is_err() {
-        return Err(Error::EBADF);
+        return Err(kernel::error::code::EBADF);
     }
 
     group.get_mut().init();
@@ -953,7 +952,7 @@ fn poll_release(obj: Box<RefCell<RrosPollGroup>>, _filp: &File) {
     let flags: u64;
     let refmut_g = group.deref_mut();
     flags = refmut_g.waiter_list.irq_lock_noguard();
-    let mut cursor = unsafe { (*refmut_g.waiter_list.locked_data().get()).cursor_front_mut() };
+    let mut cursor = unsafe { (*refmut_g.waiter_list.lock().deref()).cursor_front_mut() };
     while cursor.current().is_some() {
         let waiter = cursor.current().unwrap();
         waiter
@@ -1021,7 +1020,7 @@ fn poll_oob_ioctl(
                     )
                     .is_err()
                 {
-                    return Err(Error::EFAULT);
+                    return Err(kernel::error::code::EFAULT);
                 }
                 if uptrrd
                     .read_raw(
@@ -1030,7 +1029,7 @@ fn poll_oob_ioctl(
                     )
                     .is_err()
                 {
-                    return Err(Error::EFAULT);
+                    return Err(kernel::error::code::EFAULT);
                 }
             }
             ret = setup_item(filp, &mut group, creq);
@@ -1049,7 +1048,7 @@ fn poll_oob_ioctl(
                     )
                     .is_err()
                 {
-                    return Err(Error::EFAULT);
+                    return Err(kernel::error::code::EFAULT);
                 }
             }
 
@@ -1065,11 +1064,11 @@ fn poll_oob_ioctl(
                     )
                     .is_err()
                 {
-                    return Err(Error::EFAULT);
+                    return Err(kernel::error::code::EFAULT);
                 }
             }
             if uts.0.tv_nsec >= 1000_000_000 {
-                return Err(Error::EINVAL);
+                return Err(kernel::error::code::EINVAL);
             }
             ts64.0.tv_sec = uts.0.tv_sec;
             ts64.0.tv_nsec = uts.0.tv_nsec;
@@ -1083,7 +1082,7 @@ fn poll_oob_ioctl(
             }
         }
         _ => {
-            return Err(Error::ENOTTY);
+            return Err(kernel::error::code::ENOTTY);
         }
     }
 
@@ -1117,7 +1116,7 @@ impl FileOperations for PollOps {
     }
 }
 
-pub static mut RROS_POLL_FACTORY: SpinLock<factory::RrosFactory> = unsafe {
+pub static mut RROS_POLL_FACTORY: Pin<Box<SpinLock<factory::RrosFactory>>> = unsafe {
     SpinLock::new(factory::RrosFactory {
         name: CStr::from_bytes_with_nul_unchecked("poll\0".as_bytes()),
         // fops: Some(&Pollops),

@@ -12,15 +12,15 @@ use crate::{
 
 use kernel::{
     c_types, device::DeviceType, file::File, file_operations::FileOperations,
-    io_buffer::IoBufferWriter, prelude::*, spinlock_init, str::CStr, sync::SpinLock, user_ptr,
+    io_buffer::IoBufferWriter, prelude::*, new_spinlock, str::CStr, sync::SpinLock, user_ptr,
     Error,
 };
 
 #[allow(dead_code)]
 pub struct RrosMonitorItem1 {
-    pub mutex: SpinLock<i32>,
+    pub mutex: Pin<Box<SpinLock<i32>>>,
     pub events: list::ListHead,
-    pub lock: SpinLock<i32>,
+    pub lock: Pin<Box<SpinLock<i32>>>,
 }
 
 impl RrosMonitorItem1 {
@@ -196,7 +196,7 @@ pub fn monitor_factory_build(
     _state_offp: &u32,
 ) -> Result<Rc<RefCell<RrosElement>>> {
     if (clone_flags & !factory::RROS_CLONE_PUBLIC) != 0 {
-        return Err(Error::EINVAL);
+        return Err(kernel::error::code::EINVAL);
     }
 
     let mut attrs = RrosMonitorAttrs::new()?;
@@ -206,28 +206,28 @@ pub fn monitor_factory_build(
         &attrs as *const RrosMonitorAttrs as *const c_types::c_void;
     let ret = unsafe { user_ptr::rust_helper_copy_from_user(ptr, u_attrs as _, len as _) };
     if ret != 0 {
-        return Err(Error::EFAULT);
+        return Err(kernel::error::code::EFAULT);
     }
 
     match attrs.type_foo {
         RROS_MONITOR_GATE => match attrs.protocol {
             RROS_GATE_PP => {
                 if attrs.initval == 0 || attrs.initval > RROS_FIFO_MAX_PRIO as u32 {
-                    return Err(Error::EINVAL);
+                    return Err(kernel::error::code::EINVAL);
                 }
             }
             RROS_GATE_PI => {
                 if attrs.initval != 0 {
-                    return Err(Error::EINVAL);
+                    return Err(kernel::error::code::EINVAL);
                 }
             }
-            _ => return Err(Error::EINVAL),
+            _ => return Err(kernel::error::code::EINVAL),
         },
         RROS_MONITOR_EVENT => match attrs.protocol {
             RROS_EVENT_GATED | RROS_EVENT_COUNT | RROS_EVENT_MASK => (),
-            _ => return Err(Error::EINVAL),
+            _ => return Err(kernel::error::code::EINVAL),
         },
-        _ => return Err(Error::EINVAL),
+        _ => return Err(kernel::error::code::EINVAL),
     }
 
     let _clock: Result<&mut clock::RrosClock> = {
@@ -238,7 +238,7 @@ pub fn monitor_factory_build(
     };
 
     let element = Rc::try_new(RefCell::new(RrosElement::new()?))?;
-    let factory: &mut SpinLock<RrosFactory> = unsafe { &mut RROS_MONITOR_FACTORY };
+    let factory: &mut Pin<Box<SpinLock<RrosFactory>>> = unsafe { &mut RROS_MONITOR_FACTORY };
     let _ret = factory::rros_init_element(element.clone(), factory, clone_flags);
 
     let mut state = RrosMonitorState::new()?;
@@ -273,10 +273,10 @@ pub fn monitor_factory_build(
         Some(RrosMonitorStateItem::Gate(ref _rros_monitor_state_item_gate)) => {
             let mut item = RrosMonitorItem1::new()?;
             let pinned = unsafe { Pin::new_unchecked(&mut item.mutex) };
-            spinlock_init!(pinned, "RrosMonitorItem1_lock");
+            new_spinlock!(pinned, "RrosMonitorItem1_lock");
 
             let pinned = unsafe { Pin::new_unchecked(&mut item.lock) };
-            spinlock_init!(pinned, "value");
+            new_spinlock!(pinned, "value");
             RrosMonitor::new(
                 element,
                 Some(state),
@@ -304,7 +304,7 @@ pub fn monitor_factory_build(
 }
 
 #[allow(dead_code)]
-pub static mut RROS_MONITOR_FACTORY: SpinLock<factory::RrosFactory> = unsafe {
+pub static mut RROS_MONITOR_FACTORY: Pin<Box<SpinLock<factory::RrosFactory>>> = unsafe {
     SpinLock::new(factory::RrosFactory {
         name: CStr::from_bytes_with_nul_unchecked("monitor\0".as_bytes()),
         // fops: Some(&MonitorOps),

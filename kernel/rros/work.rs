@@ -1,43 +1,43 @@
 use alloc::rc::Rc;
-use core::cell::RefCell;
+use core::{borrow::BorrowMut, cell::RefCell};
 
 use crate::factory::RrosElement;
 use kernel::{
     bindings, container_of,
     irq_work::IrqWork,
     pr_debug,
-    workqueue::{init_work, queue_work_on, Work},
+    workqueue::{new_work, impl_has_work, WorkItem, Work, Queue},
+    prelude::*,
+    macros::pin_data,
 };
 
+#[pin_data]
 pub struct RrosWork {
     irq_work: IrqWork,
-    wq_work: Work,
-    wq: *mut bindings::workqueue_struct,
+    #[pin]
+    wq_work: Work<RrosWork>,
+    wq: Queue,
     pub handler: Option<fn(arg: &mut RrosWork) -> i32>,
     // element : Rc<RefCell<RrosElement>>
     element: Option<Rc<RefCell<RrosElement>>>,
 }
 
-fn do_wq_work(wq_work: *mut Work) {
-    let work = container_of!(wq_work, RrosWork, wq_work);
-    let handler = unsafe { (*work).handler.unwrap() };
-    let work = unsafe { &mut *(work as *mut RrosWork) };
-    handler(work);
+impl_has_work! {
+    impl HasWork<Self> for RrosWork { self.wq_work }
+}
 
-    // TODO:
-    // if (work->element)
-    // rros_put_element(work->element);
+impl WorkItem for RrosWork {
+    type Pointer = Arc<RrosWork>;
+
+    fn run(this: Arc<RrosWork>) {
+        this.as_ref().handler(this.borrow_mut());
+    }
 }
 
 unsafe extern "C" fn do_irq_work(irq_work: *mut IrqWork) {
     let work = container_of!(irq_work, RrosWork, irq_work) as *mut RrosWork;
-    if unsafe {
-        !queue_work_on(
-            bindings::WORK_CPU_UNBOUND as _,
-            (*work).wq,
-            &mut (*work).wq_work,
-        ) && (*work).element.is_some()
-    } {
+    if (*work).wq.enqueue((*work).wq_work) && (*work).element.is_some()
+    {
         pr_debug!("uncompleted rros_put_element()");
     }
     // TODO: rros_put_element is not implemented
@@ -72,7 +72,7 @@ impl RrosWork {
     }
     pub fn init(&mut self, handler: fn(arg: &mut RrosWork) -> i32) {
         let _ret = self.irq_work.init_irq_work(do_irq_work);
-        init_work(&mut self.wq_work, do_wq_work);
+        self.wq_work = new_work!("RrosWork::wq_work");
         self.handler = Some(handler);
         self.element = Some(Rc::try_new(RefCell::new(RrosElement::new().unwrap())).unwrap());
     }
@@ -82,12 +82,14 @@ impl RrosWork {
         element: Rc<RefCell<RrosElement>>,
     ) {
         let _ret = self.irq_work.init_irq_work(do_irq_work);
-        init_work(&mut self.wq_work, do_wq_work);
+        self.wq_work = new_work!("RrosWork::wq_work");
         self.handler = Some(handler);
         self.element = Some(element);
     }
     pub fn call_inband_from(&mut self, wq: *mut bindings::workqueue_struct) {
-        self.wq = wq;
+        unsafe{ 
+            self.wq = Queue::from_raw(wq)
+        };
         // TODO: rros_put_element is not implemented
         // if (work->element)
         if self.element.is_some() {

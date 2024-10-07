@@ -4,19 +4,22 @@ use crate::{
     net::{skb::RrosSkbQueueInner, socket::uncharge_socke_wmem},
 };
 use core::ffi::c_void;
+use core::ops::Deref;
 use kernel::{
-    bindings, init_static_sync, interrupt,
+    bindings, interrupt,
     irq_work::IrqWork,
     netdevice,
-    sync::{Lock, SpinLock},
+    sync::SpinLock,
     Error, Result,
+    prelude::*,
+    new_spinlock,
 };
 
 // NOTE:initialize in rros_net_init_tx
 // TODO: The implementation here does not use DEFINE_PER_CPU because Rust does not yet support statically defined percpu variables.
-init_static_sync! {
-    static OOB_TX_RELAY : SpinLock<RrosSkbQueueInner> = RrosSkbQueueInner::default();
-}
+
+static OOB_TX_RELAY : Pin<Box<SpinLock<RrosSkbQueueInner>>> = Box::pin_init(new_spinlock!(RrosSkbQueueInner::default())).unwrap();
+
 static mut OOB_XMIT_WORK: IrqWork = unsafe {
     core::mem::transmute::<[u8; core::mem::size_of::<IrqWork>()], IrqWork>(
         [0; core::mem::size_of::<IrqWork>()],
@@ -104,7 +107,7 @@ fn skb_inband_xmit_backlog() {
     init_list_head!(&mut list);
     let flags = OOB_TX_RELAY.irq_lock_noguard(); // TODO: Whether lock is required.
 
-    if unsafe { (*OOB_TX_RELAY.locked_data().get()).move_queue(&mut list) } {
+    if unsafe { (*OOB_TX_RELAY.lock().deref()).move_queue(&mut list) } {
         list_for_each_entry_safe!(
             skb,
             n,
@@ -138,20 +141,20 @@ fn skb_inband_xmit_backlog() {
 pub fn rros_net_transmit(mut skb: &mut RrosSkBuff) -> Result<()> {
     let dev = skb.dev();
     if dev.is_none() {
-        return Err(Error::EINVAL);
+        return Err(kernel::error::code::EINVAL);
     }
     let dev = dev.unwrap();
     if dev.is_vlan_dev() {
-        return Err(Error::EINVAL);
+        return Err(kernel::error::code::EINVAL);
     }
 
     if unsafe { !skb.__bindgen_anon_2.sk.is_null() } {
         // sk_buff->sk
-        return Err(Error::EINVAL);
+        return Err(kernel::error::code::EINVAL);
     }
 
     if !skb.is_oob() {
-        return Err(Error::EINVAL);
+        return Err(kernel::error::code::EINVAL);
     }
     // if dev.is_oob_capable(){
     //     return xmit_oob()
@@ -163,7 +166,7 @@ pub fn rros_net_transmit(mut skb: &mut RrosSkBuff) -> Result<()> {
     }
 
     let flags = OOB_TX_RELAY.irq_lock_noguard();
-    unsafe { (*OOB_TX_RELAY.locked_data().get()).add(skb) };
+    unsafe { (*OOB_TX_RELAY.lock().deref()).add(skb) };
     OOB_TX_RELAY.irq_unlock_noguard(flags);
     unsafe {
         OOB_XMIT_WORK.irq_work_queue()?;

@@ -1,7 +1,7 @@
 use crate::{sched, thread::*};
 use kernel::{
     prelude::*,
-    sync::{Lock, SpinLock},
+    sync::{ SpinLock, Arc},
 };
 
 pub static mut RROS_SCHED_IDLE: sched::RrosSchedClass = sched::RrosSchedClass {
@@ -66,13 +66,13 @@ pub const RROS_IDLE_PRIO: i32 = -1;
 fn rros_idle_pick(rq: Option<*mut sched::rros_rq>) -> Result<Arc<SpinLock<sched::RrosThread>>> {
     match rq {
         Some(_) => (),
-        None => return Err(kernel::Error::EINVAL),
+        None => return Err(kernel::error::code::EINVAL),
     }
     let root_thread;
     unsafe {
         match (*rq.unwrap()).root_thread.clone() {
             Some(t) => root_thread = t.clone(),
-            None => return Err(kernel::Error::EINVAL),
+            None => return Err(kernel::error::code::EINVAL),
         }
     }
     return Ok(root_thread);
@@ -94,7 +94,7 @@ fn __rros_set_idle_schedparam(
     // let mut thread_lock = thread_unwrap.lock();
     let p_unwrap = p.unwrap();
     thread_unwrap.lock().state &= !T_WEAK;
-    let prio = unsafe { (*p_unwrap.locked_data().get()).idle.prio };
+    let prio = unsafe { (*p_unwrap.lock().deref()).idle.prio };
     return sched::rros_set_effective_thread_priority(thread.clone(), prio);
 }
 

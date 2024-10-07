@@ -47,7 +47,7 @@ fn weak_enqueue(thread: Rc<RefCell<sched::RrosThread>>) {
     let rq_clone;
     match thread_ptr.rq.clone() {
         Some(r) => rq_clone = r.clone(),
-        None => Err(kernel::Error::EINVAL),
+        None => Err(kernel::error::code::EINVAL),
     }
     let rq_ptr = rq_clone.borrow_mut();
     queue::rros_add_schedq_tail(rq_ptr.weak.runnable, thread_clone);
@@ -59,7 +59,7 @@ fn weak_dequeue(thread: Rc<RefCell<sched::RrosThread>>) {
     let rq_clone;
     match thread_ptr.rq.clone() {
         Some(r) => rq_clone = r.clone(),
-        None => Err(kernel::Error::EINVAL),
+        None => Err(kernel::error::code::EINVAL),
     }
     let rq_ptr = rq_clone.borrow_mut();
     queue::rros_del_schedq(rq_ptr.weak.runnable, thread_clone);
@@ -71,7 +71,7 @@ fn weak_requeue(thread: Rc<RefCell<sched::RrosThread>>) {
     let rq_clone;
     match thread_ptr.rq.clone() {
         Some(r) => rq_clone = r.clone(),
-        None => Err(kernel::Error::EINVAL),
+        None => Err(kernel::error::code::EINVAL),
     }
     let rq_ptr = rq_clone.borrow_mut();
     queue::rros_add_schedq(rq_ptr.weak.runnable, thread_clone);
@@ -106,7 +106,7 @@ fn weak_chkparam(
     if (unsafe { (*p) }.weak.prio < RROS_WEAK_MIN_PRIO
         || unsafe { (*p) }.weak.prio > RROS_WEAK_MAX_PRIO)
     {
-        return Err(kernel::Error::EINVAL);
+        return Err(kernel::error::code::EINVAL);
     }
     Ok(0)
 }
@@ -135,7 +135,7 @@ fn weak_declare(
     if (unsafe { (*p) }.weak.prio < RROS_WEAK_MIN_PRIO
         || unsafe { (*p) }.weak.prio > RROS_WEAK_MAX_PRIO)
     {
-        return Err(kernel::Error::EINVAL);
+        return Err(kernel::error::code::EINVAL);
     }
 
     Ok(0)

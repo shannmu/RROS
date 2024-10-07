@@ -5,7 +5,7 @@ use kernel::{
     prelude::*,
     premmpt,
     str::CStr,
-    sync::{Guard, Lock, SpinLock},
+    sync::{Guard,  SpinLock},
 };
 
 pub const RROS_NO_HANDLE: u32 = 0x00000000;
@@ -146,14 +146,14 @@ pub fn raise_boost_flag(owner: Arc<SpinLock<RrosThread>>) {
     unsafe {
         // assert_hard_lock(&owner->lock);
         let lock =
-            &mut (*(*owner.locked_data().get()).rq.unwrap()).lock as *mut bindings::hard_spinlock_t;
+            &mut (*(*owner.lock().deref()).rq.unwrap()).lock as *mut bindings::hard_spinlock_t;
         raw_spin_lock(lock);
 
-        let state = (*owner.locked_data().get()).state;
+        let state = (*owner.lock().deref()).state;
 
         if state & T_BOOST == 0 {
-            (*owner.locked_data().get()).bprio = (*owner.locked_data().get()).cprio;
-            (*owner.locked_data().get()).state |= T_BOOST;
+            (*owner.lock().deref()).bprio = (*owner.lock().deref()).cprio;
+            (*owner.lock().deref()).state |= T_BOOST;
         }
         raw_spin_unlock(lock);
     }
@@ -173,12 +173,12 @@ pub fn inherit_thread_priority(
 
     let func;
     unsafe {
-        let wchan = (*owner.locked_data().get()).wchan.clone().unwrap();
-        match (*wchan.locked_data().get()).reorder_wait {
+        let wchan = (*owner.lock().deref()).wchan.clone().unwrap();
+        match (*wchan.lock().deref()).reorder_wait {
             Some(f) => func = f,
             None => {
                 pr_warn!("inherit_thread_priority:reorder_wait function error");
-                return Err(kernel::Error::EINVAL);
+                return Err(kernel::error::code::EINVAL);
             }
         }
     }
@@ -197,13 +197,13 @@ pub fn adjust_boost(
         let mut ret: Result<i32> = Ok(0);
         // assert_hard_lock(&owner->lock);
         // assert_hard_lock(&origin->lock);
-        let boosters = (*owner.locked_data().get()).boosters;
+        let boosters = (*owner.lock().deref()).boosters;
         mutex = Arc::into_raw((*boosters).get_head().unwrap().value.clone())
-            as *mut SpinLock<RrosMutex> as *mut RrosMutex;
+            as *mut Pin<Box<SpinLock<RrosMutex>>> as *mut RrosMutex;
         if mutex != origin {
             raw_spin_lock(&mut (*mutex).lock as *mut bindings::hard_spinlock_t);
         }
-        let wprio = (*owner.locked_data().get()).wprio;
+        let wprio = (*owner.lock().deref()).wprio;
         if (*mutex).wprio == wprio {
             if mutex != origin {
                 raw_spin_unlock(&mut (*mutex).lock as *mut bindings::hard_spinlock_t);
@@ -215,13 +215,13 @@ pub fn adjust_boost(
             pprio = get_ceiling_value(mutex);
 
             rros_protect_thread_priority(owner.clone(), pprio as i32);
-            let wchan = (*owner.locked_data().get()).wchan.clone().unwrap();
+            let wchan = (*owner.lock().deref()).wchan.clone().unwrap();
             let func;
-            match (*wchan.locked_data().get()).reorder_wait {
+            match (*wchan.lock().deref()).reorder_wait {
                 Some(f) => func = f,
                 None => {
                     pr_warn!("adjust_boost:reorder_wait function error");
-                    return Err(kernel::Error::EINVAL);
+                    return Err(kernel::error::code::EINVAL);
                 }
             }
             ret = func(owner.clone(), originator.clone());
@@ -236,7 +236,7 @@ pub fn adjust_boost(
                 return Ok(0);
             }
             let contender_ptr =
-                Arc::into_raw(contender.clone()) as *mut SpinLock<RrosThread> as *mut RrosThread;
+                Arc::into_raw(contender.clone()) as *mut Pin<Box<SpinLock<RrosThread>>> as *mut RrosThread;
             if contender_ptr == 0 as *mut RrosThread {
                 let contender = (*(*mutex).wchan.wait_list)
                     .get_head()
@@ -244,7 +244,7 @@ pub fn adjust_boost(
                     .value
                     .clone();
                 let lock =
-                    &mut (*contender.locked_data().get()).lock as *mut bindings::hard_spinlock_t;
+                    &mut (*contender.lock().deref()).lock as *mut bindings::hard_spinlock_t;
                 raw_spin_lock(lock);
                 ret = inherit_thread_priority(owner.clone(), contender.clone(), originator.clone());
                 raw_spin_unlock(lock);
@@ -269,10 +269,10 @@ pub fn ceil_owner_priority(
         // assert_hard_lock(&mutex->lock);
         wprio = rros_calc_weighted_prio(&RrosSchedFifo, get_ceiling_value(mutex) as i32);
         (*mutex).wprio = wprio;
-        let lock = &mut (*owner.locked_data().get()).lock as *mut bindings::hard_spinlock_t;
+        let lock = &mut (*owner.lock().deref()).lock as *mut bindings::hard_spinlock_t;
         raw_spin_lock(lock);
 
-        let boosters = (*owner.locked_data().get()).boosters;
+        let boosters = (*owner.lock().deref()).boosters;
         if (*boosters).is_empty() {
             (*boosters).add_head((*(*mutex).next_booster).value.clone());
         } else {
@@ -298,7 +298,7 @@ pub fn ceil_owner_priority(
         raise_boost_flag(owner.clone());
         (*mutex).flags |= RROS_MUTEX_CEILING as i32;
 
-        let owner_wprio = (*owner.locked_data().get()).wprio;
+        let owner_wprio = (*owner.lock().deref()).wprio;
         if wprio > owner_wprio {
             adjust_boost(
                 owner.clone(),
@@ -340,7 +340,7 @@ pub fn track_owner(mutex: *mut RrosMutex, owner: Arc<SpinLock<RrosThread>>) {
             // smp_wmb();
             // rros_put_element(&prev->element);
         }
-        (*(*owner.locked_data().get()).trackers).add_head((*((*mutex).next_tracker)).value.clone());
+        (*(*owner.lock().deref()).trackers).add_head((*((*mutex).next_tracker)).value.clone());
         lock::raw_spin_unlock_irqrestore(flags);
         (*mutex).owner = Some(owner.clone());
     }
@@ -348,8 +348,8 @@ pub fn track_owner(mutex: *mut RrosMutex, owner: Arc<SpinLock<RrosThread>>) {
 
 pub fn ref_and_track_owner(mutex: *mut RrosMutex, owner: Arc<SpinLock<RrosThread>>) {
     unsafe {
-        let ptr1 = Arc::into_raw((*mutex).owner.clone().unwrap()) as *mut SpinLock<RrosThread>;
-        let ptr2 = Arc::into_raw(owner.clone()) as *mut SpinLock<RrosThread>;
+        let ptr1 = Arc::into_raw((*mutex).owner.clone().unwrap()) as *mut Pin<Box<SpinLock<RrosThread>>>;
+        let ptr2 = Arc::into_raw(owner.clone()) as *mut Pin<Box<SpinLock<RrosThread>>>;
         if ptr1 != ptr2 {
             // rros_get_element(&owner->element);
             track_owner(mutex, owner.clone());
@@ -412,12 +412,12 @@ pub fn clear_boost_locked(
         (*mutex).flags &= !flag;
 
         (*(*mutex).next_booster).remove();
-        let boosters = (*owner.locked_data().get()).boosters;
+        let boosters = (*owner.lock().deref()).boosters;
         if (*boosters).is_empty() {
-            let lock = &mut (*(*owner.locked_data().get()).rq.unwrap()).lock
+            let lock = &mut (*(*owner.lock().deref()).rq.unwrap()).lock
                 as *mut bindings::hard_spinlock_t;
             raw_spin_lock(lock);
-            (*owner.locked_data().get()).state &= !T_BOOST;
+            (*owner.lock().deref()).state &= !T_BOOST;
             raw_spin_unlock(lock);
             inherit_thread_priority(owner.clone(), owner.clone(), owner.clone());
         } else {
@@ -437,7 +437,7 @@ pub fn clear_boost(
     owner: Arc<SpinLock<RrosThread>>,
     flag: i32,
 ) -> Result<usize> {
-    let lock = unsafe { &mut (*owner.locked_data().get()).lock as *mut bindings::hard_spinlock_t };
+    let lock = unsafe { &mut (*owner.lock().deref()).lock as *mut bindings::hard_spinlock_t };
     raw_spin_lock(lock);
     clear_boost_locked(mutex, owner.clone(), flag);
     raw_spin_unlock(lock);
@@ -449,7 +449,7 @@ pub fn detect_inband_owner(mutex: *mut RrosMutex, curr: *mut RrosThread) {
         let owner = (*mutex).owner.clone().unwrap();
         let lock = &mut (*(*curr).rq.unwrap()).lock as *mut bindings::hard_spinlock_t;
         raw_spin_lock(lock);
-        let state = (*owner.locked_data().get()).state;
+        let state = (*owner.lock().deref()).state;
         if (*curr).info & T_PIALERT != 0 {
             (*curr).info &= !T_PIALERT;
         } else if state & T_INBAND != 0 {
@@ -485,7 +485,7 @@ pub fn rros_detect_boost_drop() {
             // raw_spin_lock(&mut (*mutex).lock as *mut bindings::hard_spinlock_t);
             for j in 1..=(*wait_list).len() {
                 let waiter_node = (*wait_list).get_by_index(j).unwrap().value.clone();
-                waiter = Arc::into_raw(waiter_node) as *mut SpinLock<RrosThread> as *mut RrosThread;
+                waiter = Arc::into_raw(waiter_node) as *mut Pin<Box<SpinLock<RrosThread>>> as *mut RrosThread;
                 if (*waiter).state & T_WOLI == 0 {
                     continue;
                 }
@@ -545,7 +545,7 @@ pub fn flush_mutex_locked(mutex: *mut RrosMutex, reason: u32) -> Result<usize> {
                 thread_node = (*(*(*mutex).wchan.wait_list).get_by_index(i).unwrap())
                     .value
                     .clone();
-                (*(*thread_node.locked_data().get()).wait_next).remove();
+                (*(*thread_node.lock().deref()).wait_next).remove();
                 rros_wakeup_thread(thread_node.clone(), T_PEND, reason);
             }
             if (*mutex).flags & RROS_MUTEX_CLAIMED as i32 != 0 {
@@ -594,8 +594,8 @@ pub fn rros_trylock_mutex(mutex: *mut RrosMutex) -> Result<i32> {
     // 	}
     // }
 
-    unsafe { set_current_owner(mutex, Arc::from_raw(curr as *const SpinLock<RrosThread>)) };
-    disable_inband_switch(curr as *mut SpinLock<RrosThread> as *mut RrosThread);
+    unsafe { set_current_owner(mutex, Arc::from_raw(curr as *const Pin<Box<SpinLock<RrosThread>>>)) };
+    disable_inband_switch(curr as *mut Pin<Box<SpinLock<RrosThread>>> as *mut RrosThread);
 
     return Ok(0);
 }
@@ -608,19 +608,19 @@ pub fn wait_mutex_schedule(mutex: *mut RrosMutex) -> Result<i32> {
 
     unsafe { rros_schedule() };
 
-    info = unsafe { (*(*rros_current()).locked_data().get()).info };
+    info = unsafe { (*(*rros_current()).lock().deref()).info };
     if info & T_RMID != 0 {
-        return Err(kernel::Error::EIDRM);
+        return Err(kernel::error::code::EIDRM);
     }
 
     if info & (T_TIMEO | T_BREAK) != 0 {
         let flags = lock::raw_spin_lock_irqsave();
-        let wait_next = unsafe { (*(*curr).locked_data().get()).wait_next };
+        let wait_next = unsafe { (*(*curr).lock().deref()).wait_next };
         unsafe { (*wait_next).remove() };
         if info & T_TIMEO != 0 {
-            ret = Err(kernel::Error::ETIMEDOUT);
+            ret = Err(kernel::error::code::ETIMEDOUT);
         } else if info & T_BREAK != 0 {
-            ret = Err(kernel::Error::EINTR);
+            ret = Err(kernel::error::code::EINTR);
         }
 
         lock::raw_spin_unlock_irqrestore(flags);
@@ -656,15 +656,15 @@ pub fn finish_mutex_wait(mutex: *mut RrosMutex) {
             .unwrap()
             .value
             .clone();
-        let owner_lock = &mut (*owner.locked_data().get()).lock as *mut bindings::hard_spinlock_t;
+        let owner_lock = &mut (*owner.lock().deref()).lock as *mut bindings::hard_spinlock_t;
         let contender_lock =
-            &mut (*contender.locked_data().get()).lock as *mut bindings::hard_spinlock_t;
+            &mut (*contender.lock().deref()).lock as *mut bindings::hard_spinlock_t;
         raw_spin_lock(owner_lock);
         raw_spin_lock(contender_lock);
-        (*mutex).wprio = (*contender.locked_data().get()).wprio;
+        (*mutex).wprio = (*contender.lock().deref()).wprio;
         (*(*mutex).next_booster).remove();
 
-        let boosters = (*owner.locked_data().get()).boosters;
+        let boosters = (*owner.lock().deref()).boosters;
         if (*boosters).is_empty() {
             (*boosters).add_head((*(*mutex).next_booster).value.clone());
         } else {
@@ -700,17 +700,17 @@ pub fn check_lock_chain(
     originator: Arc<SpinLock<RrosThread>>,
 ) -> Result<i32> {
     unsafe {
-        let mut wchan = (*owner.locked_data().get()).wchan.clone();
+        let mut wchan = (*owner.lock().deref()).wchan.clone();
         // assert_hard_lock(&owner->lock);
         // assert_hard_lock(&originator->lock);
 
         if wchan.is_some() {
             let func;
-            match (*wchan.clone().unwrap().locked_data().get()).follow_depend {
+            match (*wchan.clone().unwrap().lock().deref()).follow_depend {
                 Some(f) => func = f,
                 None => {
                     pr_warn!("check_lock_chain:follow_depend function error");
-                    return Err(kernel::Error::EINVAL);
+                    return Err(kernel::error::code::EINVAL);
                 }
             }
             return func(wchan.as_mut().unwrap().clone(), originator.clone());
@@ -747,25 +747,25 @@ pub fn rros_lock_mutex_timeout(
                 get_owner_handle(currh, mutex) as i32,
             ) as FundleT;
             if h == RROS_NO_HANDLE {
-                let temp = Arc::from_raw(rros_current() as *const SpinLock<RrosThread>);
+                let temp = Arc::from_raw(rros_current() as *const Pin<Box<SpinLock<RrosThread>>>);
                 let test = temp.clone();
                 pr_debug!("{:p}", test);
                 pr_debug!("-1-1-1-1-1-1-1-1-1-1-1-1--1-1-11-1-1-1-1-1-1");
                 set_current_owner(mutex, temp.clone());
 
-                disable_inband_switch(curr as *mut SpinLock<RrosThread> as *mut RrosThread);
+                disable_inband_switch(curr as *mut Pin<Box<SpinLock<RrosThread>>> as *mut RrosThread);
 
                 return Ok(0);
             }
 
             if rros_get_index(h) == currh {
-                return Err(kernel::Error::EDEADLK);
+                return Err(kernel::error::code::EDEADLK);
             }
 
             ret = Ok(0);
             let mut test_no_owner = 0; // goto test_no_owner
             let mut flags = lock::raw_spin_lock_irqsave();
-            let curr_lock = &mut (*curr.locked_data().get()).lock as *mut bindings::hard_spinlock_t;
+            let curr_lock = &mut (*curr.lock().deref()).lock as *mut bindings::hard_spinlock_t;
             raw_spin_lock(curr_lock);
             if fast_mutex_is_claimed(h) == true {
                 oldh = atomic_read(lockp) as u32;
@@ -798,43 +798,43 @@ pub fn rros_lock_mutex_timeout(
             pr_debug!("33333333333333333333333333333333");
             // owner = rros_get_factory_element_by_fundle(&rros_thread_factory,rros_get_index(h),struct RrosThread);
             let owner_ptr =
-                Arc::into_raw(owner.clone()) as *mut SpinLock<RrosThread> as *mut RrosThread;
+                Arc::into_raw(owner.clone()) as *mut Pin<Box<SpinLock<RrosThread>>> as *mut RrosThread;
             if owner_ptr == 0 as *mut RrosThread {
                 untrack_owner(mutex);
                 raw_spin_unlock(curr_lock);
                 lock::raw_spin_unlock_irqrestore(flags);
-                return Err(kernel::Error::EOWNERDEAD);
+                return Err(kernel::error::code::EOWNERDEAD);
             }
-            let ptr1 = Arc::into_raw((*mutex).owner.clone().unwrap()) as *mut SpinLock<RrosThread>
+            let ptr1 = Arc::into_raw((*mutex).owner.clone().unwrap()) as *mut Pin<Box<SpinLock<RrosThread>>>
                 as *mut RrosThread;
-            let ptr2 = Arc::into_raw(owner.clone()) as *mut SpinLock<RrosThread> as *mut RrosThread;
+            let ptr2 = Arc::into_raw(owner.clone()) as *mut Pin<Box<SpinLock<RrosThread>>> as *mut RrosThread;
             if ptr1 != ptr2 {
                 track_owner(mutex, owner.clone());
             } else {
                 // rros_put_element(&owner->element);
             }
             let owner_lock =
-                &mut (*owner.locked_data().get()).lock as *mut bindings::hard_spinlock_t;
+                &mut (*owner.lock().deref()).lock as *mut bindings::hard_spinlock_t;
             raw_spin_lock(owner_lock);
-            let state = (*curr.locked_data().get()).state;
+            let state = (*curr.lock().deref()).state;
             if state & T_WOLI != 0 {
-                detect_inband_owner(mutex, curr as *mut SpinLock<RrosThread> as *mut RrosThread);
+                detect_inband_owner(mutex, curr as *mut Pin<Box<SpinLock<RrosThread>>> as *mut RrosThread);
             }
-            let wprio = (*curr.locked_data().get()).wprio;
-            let owner_wprio = (*owner.locked_data().get()).wprio;
+            let wprio = (*curr.lock().deref()).wprio;
+            let owner_wprio = (*owner.lock().deref()).wprio;
             if wprio > owner_wprio {
-                let info = (*owner.locked_data().get()).info;
-                let wwake = (*owner.locked_data().get()).wwake;
+                let info = (*owner.lock().deref()).info;
+                let wwake = (*owner.lock().deref()).wwake;
                 if info & T_WAKEN != 0 && wwake == &mut (*mutex).wchan as *mut rros_wait_channel {
-                    let temp = Arc::from_raw(curr as *const SpinLock<RrosThread>);
+                    let temp = Arc::from_raw(curr as *const Pin<Box<SpinLock<RrosThread>>>);
                     set_current_owner_locked(mutex, temp.clone());
-                    let owner_rq_lock = &mut (*(*owner.locked_data().get()).rq.unwrap()).lock
+                    let owner_rq_lock = &mut (*(*owner.lock().deref()).rq.unwrap()).lock
                         as *mut bindings::hard_spinlock_t;
                     raw_spin_lock(owner_rq_lock);
-                    (*owner.locked_data().get()).info |= T_ROBBED;
+                    (*owner.lock().deref()).info |= T_ROBBED;
                     raw_spin_unlock(owner_rq_lock);
                     raw_spin_unlock(owner_lock);
-                    disable_inband_switch(curr as *mut SpinLock<RrosThread> as *mut RrosThread);
+                    disable_inband_switch(curr as *mut Pin<Box<SpinLock<RrosThread>>> as *mut RrosThread);
                     if (*(*mutex).wchan.wait_list).is_empty() == false {
                         currh = mutex_fast_claim(currh);
                     }
@@ -845,12 +845,12 @@ pub fn rros_lock_mutex_timeout(
                 }
 
                 if (*(*mutex).wchan.wait_list).is_empty() {
-                    let wait_next = (*curr.locked_data().get()).wait_next;
+                    let wait_next = (*curr.lock().deref()).wait_next;
                     (*(*mutex).wchan.wait_list).add_head((*wait_next).value.clone());
                 } else {
                     let mut flag = 1;
                     for i in (*(*mutex).wchan.wait_list).len()..=1 {
-                        let curr_wprio = (*(*curr).locked_data().get()).wprio;
+                        let curr_wprio = (*(*curr).lock().deref()).wprio;
                         let wprio_in_list = (*(*(*mutex).wchan.wait_list)
                             .get_by_index(i)
                             .unwrap()
@@ -861,14 +861,14 @@ pub fn rros_lock_mutex_timeout(
                         .wprio;
                         if curr_wprio <= wprio_in_list {
                             flag = 0;
-                            let wait_next = (*curr.locked_data().get()).wait_next;
+                            let wait_next = (*curr.lock().deref()).wait_next;
                             (*(*mutex).wchan.wait_list)
                                 .enqueue_by_index(i, (*wait_next).value.clone());
                             break;
                         }
                     }
                     if flag == 1 {
-                        let wait_next = (*curr.locked_data().get()).wait_next;
+                        let wait_next = (*curr.lock().deref()).wait_next;
                         (*(*mutex).wchan.wait_list).add_head((*wait_next).value.clone());
                     }
                 }
@@ -880,9 +880,9 @@ pub fn rros_lock_mutex_timeout(
                     } else {
                         (*mutex).flags |= RROS_MUTEX_CLAIMED as i32;
                     }
-                    (*mutex).wprio = (*curr.locked_data().get()).wprio;
+                    (*mutex).wprio = (*curr.lock().deref()).wprio;
 
-                    let boosters = (*owner.locked_data().get()).boosters;
+                    let boosters = (*owner.lock().deref()).boosters;
                     if (*boosters).is_empty() {
                         (*boosters).add_head((*((*mutex).next_booster)).value.clone());
                     } else {
@@ -907,20 +907,20 @@ pub fn rros_lock_mutex_timeout(
                             (*boosters).add_head((*((*mutex).next_booster)).value.clone());
                         }
                     }
-                    let temp = Arc::from_raw(curr as *const SpinLock<RrosThread>);
+                    let temp = Arc::from_raw(curr as *const Pin<Box<SpinLock<RrosThread>>>);
                     ret = inherit_thread_priority(owner.clone(), temp.clone(), temp.clone());
                 } else {
-                    let temp = Arc::from_raw(curr as *const SpinLock<RrosThread>);
+                    let temp = Arc::from_raw(curr as *const Pin<Box<SpinLock<RrosThread>>>);
                     ret = check_lock_chain(owner.clone(), temp.clone());
                 }
             } else {
                 if (*(*mutex).wchan.wait_list).is_empty() {
-                    let wait_next = (*curr.locked_data().get()).wait_next;
+                    let wait_next = (*curr.lock().deref()).wait_next;
                     (*(*mutex).wchan.wait_list).add_head((*wait_next).value.clone());
                 } else {
                     let mut flag = 1;
                     for i in (*(*mutex).wchan.wait_list).len()..=1 {
-                        let curr_wprio = (*curr.locked_data().get()).wprio;
+                        let curr_wprio = (*curr.lock().deref()).wprio;
                         let wprio_in_list = (*(*(*mutex).wchan.wait_list)
                             .get_by_index(i)
                             .unwrap()
@@ -931,23 +931,23 @@ pub fn rros_lock_mutex_timeout(
                         .wprio;
                         if curr_wprio <= wprio_in_list {
                             flag = 0;
-                            let wait_next = (*curr.locked_data().get()).wait_next;
+                            let wait_next = (*curr.lock().deref()).wait_next;
                             (*(*mutex).wchan.wait_list)
                                 .enqueue_by_index(i, (*wait_next).value.clone());
                             break;
                         }
                     }
                     if flag == 1 {
-                        let wait_next = (*curr.locked_data().get()).wait_next;
+                        let wait_next = (*curr.lock().deref()).wait_next;
                         (*(*mutex).wchan.wait_list).add_head((*wait_next).value.clone());
                     }
                 }
-                let temp = Arc::from_raw(curr as *const SpinLock<RrosThread>);
+                let temp = Arc::from_raw(curr as *const Pin<Box<SpinLock<RrosThread>>>);
                 ret = check_lock_chain(owner.clone(), temp.clone());
             }
             raw_spin_unlock(owner_lock);
             if ret != Ok(0) {
-                let curr_rq_lock = &mut (*(*curr.locked_data().get()).rq.unwrap()).lock
+                let curr_rq_lock = &mut (*(*curr.lock().deref()).rq.unwrap()).lock
                     as *mut bindings::hard_spinlock_t;
                 raw_spin_lock(curr_rq_lock);
                 rros_sleep_on_locked(
@@ -967,34 +967,34 @@ pub fn rros_lock_mutex_timeout(
 
             finish_mutex_wait(mutex);
             raw_spin_lock(curr_lock);
-            (*curr.locked_data().get()).wwake = 0 as *mut rros_wait_channel;
-            let curr_rq_lock = &mut (*(*curr.locked_data().get()).rq.unwrap()).lock
+            (*curr.lock().deref()).wwake = 0 as *mut rros_wait_channel;
+            let curr_rq_lock = &mut (*(*curr.lock().deref()).rq.unwrap()).lock
                 as *mut bindings::hard_spinlock_t;
             raw_spin_lock(curr_rq_lock);
-            (*curr.locked_data().get()).info &= !T_WAKEN;
+            (*curr.lock().deref()).info &= !T_WAKEN;
             if ret != Ok(0) {
                 raw_spin_unlock(curr_rq_lock);
                 raw_spin_unlock(curr_lock);
                 lock::raw_spin_unlock_irqrestore(flags);
                 return ret;
             }
-            let info = (*curr.locked_data().get()).info;
+            let info = (*curr.lock().deref()).info;
             if info & T_ROBBED != 0 {
                 raw_spin_unlock(curr_rq_lock);
                 // if timeout_mode != timeout::RrosTmode::RrosRel ||
                 // 	timeout == 0 ||
-                // 	rros_get_stopped_timer_delta((*curr).locked_data().get().rtimer) != 0 {
+                // 	rros_get_stopped_timer_delta((*curr).lock().deref().rtimer) != 0 {
                 // 	// raw_spin_unlock(&curr->lock);
                 // 	// raw_spin_unlock_irqrestore(&mutex->lock, flags);
                 // 	continue;
                 // } // todo rros_get_stopped_timer_delta
                 raw_spin_unlock(curr_lock);
                 lock::raw_spin_unlock_irqrestore(flags);
-                return Err(kernel::Error::ETIMEDOUT);
+                return Err(kernel::error::code::ETIMEDOUT);
             }
             raw_spin_unlock(curr_rq_lock);
 
-            disable_inband_switch(curr as *mut SpinLock<RrosThread> as *mut RrosThread);
+            disable_inband_switch(curr as *mut Pin<Box<SpinLock<RrosThread>>> as *mut RrosThread);
             if (*(*mutex).wchan.wait_list).is_empty() == false {
                 currh = mutex_fast_claim(currh);
             }
@@ -1025,12 +1025,12 @@ pub fn transfer_ownership(mutex: *mut RrosMutex, lastowner: Arc<SpinLock<RrosThr
             .unwrap()
             .value
             .clone();
-        let lock = &mut (*n_owner.locked_data().get()).lock as *mut bindings::hard_spinlock_t;
+        let lock = &mut (*n_owner.lock().deref()).lock as *mut bindings::hard_spinlock_t;
         raw_spin_lock(lock);
-        (*n_owner.locked_data().get()).wwake = &mut (*mutex).wchan as *mut rros_wait_channel;
-        (*n_owner.locked_data().get()).wchan = None;
+        (*n_owner.lock().deref()).wwake = &mut (*mutex).wchan as *mut rros_wait_channel;
+        (*n_owner.lock().deref()).wchan = None;
         raw_spin_unlock(lock);
-        (*(*n_owner.locked_data().get()).wait_next).remove();
+        (*(*n_owner.lock().deref()).wait_next).remove();
         set_current_owner_locked(mutex, n_owner.clone());
         rros_wakeup_thread(n_owner.clone(), T_PEND, T_WAKEN);
 
@@ -1048,7 +1048,7 @@ pub fn transfer_ownership(mutex: *mut RrosMutex, lastowner: Arc<SpinLock<RrosThr
 
 pub fn __rros_unlock_mutex(mutex: *mut RrosMutex) -> Result<i32> {
     let mut curr = unsafe { &mut *rros_current() };
-    let owner = unsafe { Arc::from_raw(curr as *const SpinLock<RrosThread>) };
+    let owner = unsafe { Arc::from_raw(curr as *const Pin<Box<SpinLock<RrosThread>>>) };
     let flags: u32 = 0;
     let currh: FundleT = 0;
     let mut h: FundleT = 0;
@@ -1056,7 +1056,7 @@ pub fn __rros_unlock_mutex(mutex: *mut RrosMutex) -> Result<i32> {
 
     // trace_rros_mutex_unlock(mutex);
 
-    if enable_inband_switch(curr as *mut SpinLock<RrosThread> as *mut RrosThread) == false {
+    if enable_inband_switch(curr as *mut Pin<Box<SpinLock<RrosThread>>> as *mut RrosThread) == false {
         return Ok(0);
     }
 
@@ -1064,7 +1064,7 @@ pub fn __rros_unlock_mutex(mutex: *mut RrosMutex) -> Result<i32> {
     // currh = fundle_of(curr);
 
     let flags = lock::raw_spin_lock_irqsave();
-    let lock = unsafe { &mut (*curr.locked_data().get()).lock as *mut bindings::hard_spinlock_t };
+    let lock = unsafe { &mut (*curr.lock().deref()).lock as *mut bindings::hard_spinlock_t };
     raw_spin_lock(lock);
 
     unsafe {
@@ -1114,7 +1114,7 @@ pub fn rros_drop_tracking_mutexes(curr: *mut RrosThread) {
 
         while (*(*curr).trackers).is_empty() == false {
             mutex = Arc::into_raw((*(*(*curr).trackers).get_head().unwrap()).value.clone())
-                as *mut SpinLock<RrosMutex> as *mut RrosMutex;
+                as *mut Pin<Box<SpinLock<RrosMutex>>> as *mut RrosMutex;
             lock::raw_spin_unlock_irqrestore(flags);
             h = rros_get_index(atomic_read((*mutex).fastlock) as FundleT);
             // if (h == fundle_of(curr)) {
@@ -1142,15 +1142,15 @@ pub fn rros_reorder_mutex_wait(
 ) -> Result<i32> {
     unsafe {
         let waiter_ptr =
-            Arc::into_raw(waiter.clone()) as *mut SpinLock<RrosThread> as *mut RrosThread;
+            Arc::into_raw(waiter.clone()) as *mut Pin<Box<SpinLock<RrosThread>>> as *mut RrosThread;
         let originator_ptr =
-            Arc::into_raw(originator.clone()) as *mut SpinLock<RrosThread> as *mut RrosThread;
+            Arc::into_raw(originator.clone()) as *mut Pin<Box<SpinLock<RrosThread>>> as *mut RrosThread;
         let mutex = wchan_to_mutex(Arc::into_raw((*waiter_ptr).wchan.clone().unwrap())
-            as *mut SpinLock<rros_wait_channel>
+            as *mut Pin<Box<SpinLock<rros_wait_channel>>>
             as *mut rros_wait_channel);
         let owner = (*mutex).owner.clone().unwrap();
         let owner_ptr =
-            Arc::into_raw(owner.clone()) as *mut SpinLock<RrosThread> as *mut RrosThread;
+            Arc::into_raw(owner.clone()) as *mut Pin<Box<SpinLock<RrosThread>>> as *mut RrosThread;
         // assert_hard_lock(&waiter->lock);
         // assert_hard_lock(&originator->lock);
 
@@ -1158,7 +1158,7 @@ pub fn rros_reorder_mutex_wait(
         raw_spin_lock(mutex_lock);
         if owner_ptr == originator_ptr {
             raw_spin_unlock(mutex_lock);
-            return Err(kernel::Error::EDEADLK);
+            return Err(kernel::error::code::EDEADLK);
         }
 
         (*(*waiter_ptr).wait_next).remove();
@@ -1193,7 +1193,7 @@ pub fn rros_reorder_mutex_wait(
         }
 
         (*mutex).wprio = (*waiter_ptr).wprio;
-        let owner_lock = &mut (*owner.locked_data().get()).lock as *mut bindings::hard_spinlock_t;
+        let owner_lock = &mut (*owner.lock().deref()).lock as *mut bindings::hard_spinlock_t;
         raw_spin_lock(owner_lock);
 
         if (*mutex).flags & RROS_MUTEX_CLAIMED as i32 != 0 {
@@ -1203,7 +1203,7 @@ pub fn rros_reorder_mutex_wait(
             raise_boost_flag(owner.clone());
         }
 
-        let boosters = (*owner.locked_data().get()).boosters;
+        let boosters = (*owner.lock().deref()).boosters;
         if (*boosters).is_empty() {
             (*boosters).add_head((*((*mutex).next_booster)).value.clone());
         } else {
@@ -1238,9 +1238,9 @@ pub fn rros_follow_mutex_depend(
     wchan: Arc<SpinLock<rros_wait_channel>>,
     originator: Arc<SpinLock<RrosThread>>,
 ) -> Result<i32> {
-    let wchan = Arc::into_raw(wchan) as *mut SpinLock<rros_wait_channel> as *mut rros_wait_channel;
+    let wchan = Arc::into_raw(wchan) as *mut Pin<Box<SpinLock<rros_wait_channel>>> as *mut rros_wait_channel;
     let originator_ref =
-        Arc::into_raw(originator.clone()) as *mut SpinLock<RrosThread> as *mut RrosThread;
+        Arc::into_raw(originator.clone()) as *mut Pin<Box<SpinLock<RrosThread>>> as *mut RrosThread;
     let mutex = wchan_to_mutex(wchan);
     let mut waiter = 0 as *mut RrosThread;
     let mut ret: Result<i32> = Ok(0);
@@ -1250,11 +1250,11 @@ pub fn rros_follow_mutex_depend(
     let mutex_lock = unsafe { &mut (*mutex).lock as *mut bindings::hard_spinlock_t };
     raw_spin_lock(mutex_lock);
     unsafe {
-        let owner_ref = Arc::into_raw((*mutex).owner.clone().unwrap()) as *mut SpinLock<RrosThread>
+        let owner_ref = Arc::into_raw((*mutex).owner.clone().unwrap()) as *mut Pin<Box<SpinLock<RrosThread>>>
             as *mut RrosThread;
         if owner_ref == originator_ref {
             raw_spin_unlock(mutex_lock);
-            return Err(kernel::Error::EDEADLK);
+            return Err(kernel::error::code::EDEADLK);
         }
 
         for j in 1..=(*(*mutex).wchan.wait_list).len() {
@@ -1263,18 +1263,18 @@ pub fn rros_follow_mutex_depend(
                 .unwrap()
                 .value
                 .clone();
-            waiter = Arc::into_raw(waiter_node) as *mut SpinLock<RrosThread> as *mut RrosThread;
+            waiter = Arc::into_raw(waiter_node) as *mut Pin<Box<SpinLock<RrosThread>>> as *mut RrosThread;
 
             let waiter_lock = &mut (*waiter).lock as *mut bindings::hard_spinlock_t;
             raw_spin_lock(waiter_lock);
             let mut depend = (*waiter).wchan.clone();
             if depend.is_some() {
                 let func;
-                match (*depend.clone().unwrap().locked_data().get()).follow_depend {
+                match (*depend.clone().unwrap().lock().deref()).follow_depend {
                     Some(f) => func = f,
                     None => {
                         pr_warn!("rros_follow_mutex_depend:follow_depend function error");
-                        return Err(kernel::Error::EINVAL);
+                        return Err(kernel::error::code::EINVAL);
                     }
                 }
                 ret = func(depend.as_mut().unwrap().clone(), originator.clone());
@@ -1293,7 +1293,7 @@ pub fn rros_follow_mutex_depend(
 pub fn rros_commit_mutex_ceiling(mutex: *mut RrosMutex) -> Result<i32> {
     unsafe {
         let curr = &mut *rros_current();
-        let thread = unsafe { Arc::from_raw(curr as *const SpinLock<RrosThread>) };
+        let thread = unsafe { Arc::from_raw(curr as *const Pin<Box<SpinLock<RrosThread>>>) };
         let lockp = (*mutex).fastlock;
         let flags: u32 = 0;
         let mut oldh: i32 = 0;

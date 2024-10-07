@@ -231,6 +231,7 @@ mod raw_vec;
 // Heaps provided for low-level allocation strategies
 
 pub mod alloc;
+pub mod alloc_rros;
 
 // Primitive types using the heaps above
 

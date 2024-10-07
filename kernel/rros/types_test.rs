@@ -6,6 +6,7 @@ use kernel::{
     pr_debug,
     prelude::*,
     types::*,
+    new_mutex,
 };
 
 #[allow(dead_code)]
