@@ -38,3 +38,6 @@ pub use super::{str::CStr, ThisModule};
 pub use super::init::{InPlaceInit, Init, PinInit};
 
 pub use super::current;
+
+#[cfg(CONFIG_RROS)]
+pub use crate::sync::Arc;
