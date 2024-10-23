@@ -445,21 +445,21 @@ EXPORT_SYMBOL_GPL(rust_helper_put_task_struct);
 
 int rust_helper_security_binder_set_context_mgr(struct task_struct *mgr)
 {
-	return security_binder_set_context_mgr(mgr);
+	return security_binder_set_context_mgr(mgr->cred);
 }
 EXPORT_SYMBOL_GPL(rust_helper_security_binder_set_context_mgr);
 
 int rust_helper_security_binder_transaction(struct task_struct *from,
 					    struct task_struct *to)
 {
-	return security_binder_transaction(from, to);
+	return security_binder_transaction(from->cred, to->cred);
 }
 EXPORT_SYMBOL_GPL(rust_helper_security_binder_transaction);
 
 int rust_helper_security_binder_transfer_binder(struct task_struct *from,
 						struct task_struct *to)
 {
-	return security_binder_transfer_binder(from, to);
+	return security_binder_transfer_binder(from->cred, to->cred);
 }
 EXPORT_SYMBOL_GPL(rust_helper_security_binder_transfer_binder);
 
@@ -467,7 +467,7 @@ int rust_helper_security_binder_transfer_file(struct task_struct *from,
 					      struct task_struct *to,
 					      struct file *file)
 {
-	return security_binder_transfer_file(from, to, file);
+	return security_binder_transfer_file(from->cred, to->cred, file);
 }
 EXPORT_SYMBOL_GPL(rust_helper_security_binder_transfer_file);
 
@@ -549,10 +549,9 @@ refcount_t rust_helper_REFCOUNT_INIT(int n)
 }
 EXPORT_SYMBOL_GPL(rust_helper_REFCOUNT_INIT);
 
-struct class *rust_helper_class_create(struct module *this_moduel,
-				       const char *name)
+struct class *rust_helper_class_create(const char *name)
 {
-	struct class *res = class_create(this_moduel, name);
+	struct class *res = class_create(name);
 	return res;
 }
 EXPORT_SYMBOL_GPL(rust_helper_class_create);
