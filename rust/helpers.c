@@ -238,7 +238,7 @@ static_assert(sizeof(size_t) == sizeof(uintptr_t) &&
 #include <linux/kdev_t.h>
 #include <linux/sched.h>
 #include <asm/cpufeature.h>
-void rust_helper_BUG(void)
+__noreturn void rust_helper_BUG(void)
 {
 	BUG();
 }
