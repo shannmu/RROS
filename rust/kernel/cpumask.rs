@@ -32,6 +32,7 @@ extern "C" {
     fn rust_helper_cpumask_of(cpu: u32) -> *const bindings::cpumask;
     fn rust_helper_cpus_read_lock();
     fn rust_helper_cpus_read_unlock();
+    fn rust_helper_cpumask_next(n: i32, srcp: *const bindings::cpumask) -> u32;
 }
 
 /// An possible CPU index iterator.
@@ -60,7 +61,7 @@ impl Iterator for PossibleCpusIndexIter {
 
     fn next(&mut self) -> Option<u32> {
         let next_cpu_id =
-            unsafe { bindings::cpumask_next(self.index, &bindings::__cpu_possible_mask) };
+            unsafe { rust_helper_cpumask_next(self.index, &bindings::__cpu_possible_mask) };
         // When [`bindings::cpumask_next`] can not find further CPUs set in the
         // [`bindings::__cpu_possible_mask`], it returns a value >= [`bindings::nr_cpu_ids`].
         if next_cpu_id >= unsafe { bindings::nr_cpu_ids } {
@@ -76,7 +77,7 @@ impl Iterator for OnlineCpusIndexIter {
 
     fn next(&mut self) -> Option<u32> {
         let next_cpu_id =
-            unsafe { bindings::cpumask_next(self.index, &bindings::__cpu_online_mask) };
+            unsafe { rust_helper_cpumask_next(self.index, &bindings::__cpu_online_mask) };
         // When [`bindings::cpumask_next`] can not find further CPUs set in the
         // [`bindings::__cpu_online_mask`], it returns a value >= [`bindings::nr_cpu_ids`].
         if next_cpu_id >= unsafe { bindings::nr_cpu_ids } {
@@ -92,7 +93,7 @@ impl Iterator for PresentCpusIndexIter {
 
     fn next(&mut self) -> Option<u32> {
         let next_cpu_id =
-            unsafe { bindings::cpumask_next(self.index, &bindings::__cpu_present_mask) };
+            unsafe { rust_helper_cpumask_next(self.index, &bindings::__cpu_present_mask) };
         // When [`bindings::cpumask_next`] can not find further CPUs set in the
         // [`bindings::__cpu_present_mask`], it returns a value >= [`bindings::nr_cpu_ids`].
         if next_cpu_id >= unsafe { bindings::nr_cpu_ids } {
