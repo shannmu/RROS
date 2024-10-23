@@ -1493,10 +1493,7 @@ EXPORT_SYMBOL_GPL(rust_helper___vlan_hwaccel_put_tag);
 void *rust_helper_kthread_run_on_cpu(int (*threadfn)(void *data), void *data,
 				     int cpu, const char namefmt[], ...)
 {
-	va_list args;
-	va_start(args, namefmt);
-
-	return kthread_run_on_cpu_new(threadfn, data, cpu, namefmt, args);
+	return kthread_run_on_cpu(threadfn, data, cpu, namefmt);
 }
 EXPORT_SYMBOL_GPL(rust_helper_kthread_run_on_cpu);
 
