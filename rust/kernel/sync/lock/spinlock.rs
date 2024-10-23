@@ -116,7 +116,7 @@ unsafe impl super::Backend for SpinLockBackend {
     ) {
         // SAFETY: The safety requirements ensure that `ptr` is valid for writes, and `name` and
         // `key` are valid for read indefinitely.
-        unsafe { bindings::__spin_lock_init(ptr, name, key) }
+        unsafe { bindings::spin_lock_init(ptr, name, key) }
     }
 
     unsafe fn lock(ptr: *mut Self::State) -> Self::GuardState {
