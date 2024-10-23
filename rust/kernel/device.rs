@@ -153,7 +153,7 @@ pub(crate) struct DevnodeVtable<T: Devnode>(PhantomData<T>);
 impl<T: Devnode> DevnodeVtable<T> {
     pub(crate) unsafe fn get_devnode_callback() -> Option<
         unsafe extern "C" fn(
-            dev: *mut bindings::device,
+            dev: *const bindings::device,
             mode: *mut u16,
             uid: *mut bindings::kuid_t,
             gid: *mut bindings::kgid_t,
@@ -173,12 +173,12 @@ unsafe extern "C" fn class_devnode_callback<T: ClassDevnode>(
 }
 
 unsafe extern "C" fn devnode_callback<T: Devnode>(
-    dev: *mut bindings::device,
+    dev: *const bindings::device,
     mode: *mut u16,
     uid: *mut bindings::kuid_t,
     gid: *mut bindings::kgid_t,
 ) -> *mut c_types::c_char {
-    let dev = &mut Device(dev);
+    let dev = &mut Device(dev as *mut bindings::device);
     let mode = unsafe { &mut *mode };
     let uid = if uid.is_null() {
         None
