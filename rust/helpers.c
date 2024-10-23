@@ -183,6 +183,7 @@ static_assert(sizeof(size_t) == sizeof(uintptr_t) &&
 #include <linux/mutex.h>
 #include <linux/platform_device.h>
 #include <linux/security.h>
+#include <linux/cpu.h>
 #include <linux/cpumask.h>
 #include <linux/kernel.h>
 #include <linux/preempt.h>
@@ -304,7 +305,7 @@ EXPORT_SYMBOL_GPL(rust_helper_add_wait_queue);
 
 void rust_helper_set_current_state(long state_value)
 {
-	smp_store_mb(current->state, (state_value));
+	smp_store_mb(current->__state, (state_value));
 }
 EXPORT_SYMBOL_GPL(rust_helper_set_current_state);
 
