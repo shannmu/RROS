@@ -8,14 +8,26 @@
 use crate::types::Opaque;
 
 mod arc;
+
 mod condvar;
+pub mod guard;
 pub mod lock;
+#[cfg(not(CONFIG_RROS))]
 mod locked_by;
 
 pub use arc::{Arc, ArcBorrow, UniqueArc};
 pub use condvar::CondVar;
-pub use lock::{mutex::Mutex, spinlock::SpinLock};
+pub use lock::mutex::Mutex;
+pub use lock::spinlock::SpinLock;
+#[cfg(not(CONFIG_RROS))]
 pub use locked_by::LockedBy;
+
+#[cfg(CONFIG_RROS)]
+pub use arc::{Ref, RefBorrow};
+#[cfg(CONFIG_RROS)]
+pub use guard::{Guard, Lock};
+#[cfg(CONFIG_RROS)]
+pub use lock::NeedsLockClass;
 
 /// Represents a lockdep class. It's a wrapper around C's `lock_class_key`.
 #[repr(transparent)]

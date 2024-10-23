@@ -7,11 +7,14 @@
 
 use super::LockClassKey;
 use crate::{bindings, init::PinInit, pin_init, str::CStr, types::Opaque, types::ScopeGuard};
-use core::{cell::UnsafeCell, marker::PhantomData, marker::PhantomPinned};
+use core::{cell::UnsafeCell, marker::PhantomData, marker::PhantomPinned, pin::Pin};
 use macros::pin_data;
 
 pub mod mutex;
 pub mod spinlock;
+
+#[cfg(CONFIG_RROS)]
+use crate::c_types;
 
 /// The "backend" of a lock.
 ///
@@ -74,6 +77,7 @@ pub unsafe trait Backend {
 ///
 /// Exposes one of the kernel locking primitives. Which one is exposed depends on the lock
 /// [`Backend`] specified as the generic parameter `B`.
+#[cfg(not(CONFIG_RROS))]
 #[pin_data]
 pub struct Lock<T: ?Sized, B: Backend> {
     /// The kernel lock object.
@@ -91,12 +95,15 @@ pub struct Lock<T: ?Sized, B: Backend> {
 }
 
 // SAFETY: `Lock` can be transferred across thread boundaries iff the data it protects can.
+#[cfg(not(CONFIG_RROS))]
 unsafe impl<T: ?Sized + Send, B: Backend> Send for Lock<T, B> {}
 
 // SAFETY: `Lock` serialises the interior mutability it provides, so it is `Sync` as long as the
 // data it protects is `Send`.
+#[cfg(not(CONFIG_RROS))]
 unsafe impl<T: ?Sized + Send, B: Backend> Sync for Lock<T, B> {}
 
+#[cfg(not(CONFIG_RROS))]
 impl<T, B: Backend> Lock<T, B> {
     /// Constructs a new lock initialiser.
     #[allow(clippy::new_ret_no_self)]
@@ -113,6 +120,7 @@ impl<T, B: Backend> Lock<T, B> {
     }
 }
 
+#[cfg(not(CONFIG_RROS))]
 impl<T: ?Sized, B: Backend> Lock<T, B> {
     /// Acquires the lock and gives the caller access to the data protected by it.
     pub fn lock(&self) -> Guard<'_, T, B> {
@@ -129,6 +137,7 @@ impl<T: ?Sized, B: Backend> Lock<T, B> {
 /// Allows mutual exclusion primitives that implement the [`Backend`] trait to automatically unlock
 /// when a guard goes out of scope. It also provides a safe and convenient way to access the data
 /// protected by the lock.
+#[cfg(not(CONFIG_RROS))]
 #[must_use = "the lock unlocks immediately when the guard is unused"]
 pub struct Guard<'a, T: ?Sized, B: Backend> {
     pub(crate) lock: &'a Lock<T, B>,
@@ -137,8 +146,10 @@ pub struct Guard<'a, T: ?Sized, B: Backend> {
 }
 
 // SAFETY: `Guard` is sync when the data protected by the lock is also sync.
+#[cfg(not(CONFIG_RROS))]
 unsafe impl<T: Sync + ?Sized, B: Backend> Sync for Guard<'_, T, B> {}
 
+#[cfg(not(CONFIG_RROS))]
 impl<T: ?Sized, B: Backend> Guard<'_, T, B> {
     pub(crate) fn do_unlocked(&mut self, cb: impl FnOnce()) {
         // SAFETY: The caller owns the lock, so it is safe to unlock it.
@@ -152,6 +163,7 @@ impl<T: ?Sized, B: Backend> Guard<'_, T, B> {
     }
 }
 
+#[cfg(not(CONFIG_RROS))]
 impl<T: ?Sized, B: Backend> core::ops::Deref for Guard<'_, T, B> {
     type Target = T;
 
@@ -161,6 +173,7 @@ impl<T: ?Sized, B: Backend> core::ops::Deref for Guard<'_, T, B> {
     }
 }
 
+#[cfg(not(CONFIG_RROS))]
 impl<T: ?Sized, B: Backend> core::ops::DerefMut for Guard<'_, T, B> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         // SAFETY: The caller owns the lock, so it is safe to deref the protected data.
@@ -168,6 +181,7 @@ impl<T: ?Sized, B: Backend> core::ops::DerefMut for Guard<'_, T, B> {
     }
 }
 
+#[cfg(not(CONFIG_RROS))]
 impl<T: ?Sized, B: Backend> Drop for Guard<'_, T, B> {
     fn drop(&mut self) {
         // SAFETY: The caller owns the lock, so it is safe to unlock it.
@@ -175,6 +189,7 @@ impl<T: ?Sized, B: Backend> Drop for Guard<'_, T, B> {
     }
 }
 
+#[cfg(not(CONFIG_RROS))]
 impl<'a, T: ?Sized, B: Backend> Guard<'a, T, B> {
     /// Constructs a new immutable lock guard.
     ///
@@ -188,4 +203,116 @@ impl<'a, T: ?Sized, B: Backend> Guard<'a, T, B> {
             _not_send: PhantomData,
         }
     }
+}
+
+extern "C" {
+    fn rust_helper_cond_resched() -> c_types::c_int;
+}
+
+/// Safely initialises an object that has an `init` function that takes a name and a lock class as
+/// arguments, examples of these are [`Mutex`] and [`SpinLock`]. Each of them also provides a more
+/// specialised name that uses this macro.
+#[cfg(CONFIG_RROS)]
+#[doc(hidden)]
+#[macro_export]
+macro_rules! init_with_lockdep {
+    ($obj:expr, $name:expr) => {{
+        static mut CLASS: core::mem::MaybeUninit<$crate::bindings::lock_class_key> =
+            core::mem::MaybeUninit::uninit();
+        let obj = $obj;
+        let name = $crate::c_str!($name);
+        // SAFETY: `CLASS` is never used by Rust code directly; the kernel may change it though.
+        #[allow(unused_unsafe)]
+        unsafe {
+            $crate::sync::NeedsLockClass::init(obj, name, CLASS.as_mut_ptr())
+        };
+    }};
+}
+
+/// A trait for types that need a lock class during initialisation.
+///
+/// Implementers of this trait benefit from the [`init_with_lockdep`] macro that generates a new
+/// class for each initialisation call site.
+#[cfg(CONFIG_RROS)]
+pub trait NeedsLockClass {
+    /// Initialises the type instance so that it can be safely used.
+    ///
+    /// Callers are encouraged to use the [`init_with_lockdep`] macro as it automatically creates a
+    /// new lock class on each usage.
+    ///
+    /// # Safety
+    ///
+    /// `key` must point to a valid memory location as it will be used by the kernel.
+    unsafe fn init(self: Pin<&mut Self>, name: &'static CStr, key: *mut bindings::lock_class_key);
+}
+
+/// Reschedules the caller's task if needed.
+#[cfg(CONFIG_RROS)]
+pub fn cond_resched() -> bool {
+    // SAFETY: No arguments, reschedules `current` if needed.
+    unsafe { rust_helper_cond_resched() != 0 }
+}
+
+/// Automatically initialises static instances of synchronisation primitives.
+///
+/// The syntax resembles that of regular static variables, except that the value assigned is that
+/// of the protected type (if one exists). In the examples below, all primitives except for
+/// [`CondVar`] require the inner value to be supplied.
+///
+/// # Examples
+///
+/// ```ignore
+/// # use kernel::{init_static_sync, sync::{CondVar, Mutex, RevocableMutex, SpinLock}};
+/// struct Test {
+///     a: u32,
+///     b: u32,
+/// }
+///
+/// init_static_sync! {
+///     static A: Mutex<Test> = Test { a: 10, b: 20 };
+///
+///     /// Documentation for `B`.
+///     pub static B: Mutex<u32> = 0;
+///
+///     pub(crate) static C: SpinLock<Test> = Test { a: 10, b: 20 };
+///     static D: CondVar;
+///
+///     static E: RevocableMutex<Test> = Test { a: 30, b: 40 };
+/// }
+/// ```
+#[cfg(CONFIG_RROS)]
+#[macro_export]
+macro_rules! init_static_sync {
+    ($($(#[$outer:meta])* $v:vis static $id:ident : $t:ty $(= $value:expr)?;)*) => {
+        $(
+            $(#[$outer])*
+            $v static $id: $t = {
+                #[link_section = ".ctors"]
+                #[used]
+                static TMP: extern "C" fn() = {
+                    extern "C" fn constructor() {
+                        // SAFETY: This locally-defined function is only called from a constructor,
+                        // which guarantees that `$id` is not accessible from other threads
+                        // concurrently.
+                        #[allow(clippy::cast_ref_to_mut)]
+                        let mutable = unsafe { &mut *(&$id as *const _ as *mut $t) };
+                        // SAFETY: It's a shared static, so it cannot move.
+                        let pinned = unsafe { core::pin::Pin::new_unchecked(mutable) };
+                        $crate::init_with_lockdep!(pinned, stringify!($id));
+                    }
+                    constructor
+                };
+                $crate::init_static_sync!(@call_new $t, $($value)?)
+            };
+        )*
+    };
+    (@call_new $t:ty, $value:expr) => {{
+        let v = $value;
+        // SAFETY: the initialisation function is called by the constructor above.
+        unsafe { <$t>::new(v) }
+    }};
+    (@call_new $t:ty,) => {
+        // SAFETY: the initialisation function is called by the constructor above.
+        unsafe { <$t>::new() }
+    };
 }

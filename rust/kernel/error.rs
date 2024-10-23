@@ -16,6 +16,9 @@ use core::fmt;
 use core::num::TryFromIntError;
 use core::str::Utf8Error;
 
+#[cfg(CONFIG_RROS)]
+use crate::c_types;
+
 /// Contains the C-compatible error codes.
 #[rustfmt::skip]
 pub mod code {
@@ -95,6 +98,90 @@ pub mod code {
 pub struct Error(core::ffi::c_int);
 
 impl Error {
+    /// Invalid argument.
+    #[cfg(CONFIG_RROS)]
+    pub const EINVAL: Self = Error(-(bindings::EINVAL as i32));
+
+    /// Out of memory.
+    #[cfg(CONFIG_RROS)]
+    pub const ENOMEM: Self = Error(-(bindings::ENOMEM as i32));
+
+    /// Bad address.
+    #[cfg(CONFIG_RROS)]
+    pub const EFAULT: Self = Error(-(bindings::EFAULT as i32));
+
+    /// Illegal seek.
+    #[cfg(CONFIG_RROS)]
+    pub const ESPIPE: Self = Error(-(bindings::ESPIPE as i32));
+
+    /// Try again.
+    #[cfg(CONFIG_RROS)]
+    pub const EAGAIN: Self = Error(-(bindings::EAGAIN as i32));
+
+    /// Device or resource busy.
+    #[cfg(CONFIG_RROS)]
+    pub const EBUSY: Self = Error(-(bindings::EBUSY as i32));
+
+    /// Restart the system call.
+    #[cfg(CONFIG_RROS)]
+    pub const ERESTARTSYS: Self = Error(-(bindings::ERESTARTSYS as i32));
+
+    /// Operation not permitted.
+    #[cfg(CONFIG_RROS)]
+    pub const EPERM: Self = Error(-(bindings::EPERM as i32));
+
+    /// No such process.
+    #[cfg(CONFIG_RROS)]
+    pub const ESRCH: Self = Error(-(bindings::ESRCH as i32));
+
+    /// No such file or directory.
+    #[cfg(CONFIG_RROS)]
+    pub const ENOENT: Self = Error(-(bindings::ENOENT as i32));
+
+    /// Interrupted system call.
+    #[cfg(CONFIG_RROS)]
+    pub const EINTR: Self = Error(-(bindings::EINTR as i32));
+
+    /// Bad file number.
+    #[cfg(CONFIG_RROS)]
+    pub const EBADF: Self = Error(-(bindings::EBADF as i32));
+
+    /// Resource deadlock would occur
+    #[cfg(CONFIG_RROS)]
+    pub const EDEADLK: Self = Error(-(bindings::EDEADLK as i32));
+
+    /// Connection timed out
+    #[cfg(CONFIG_RROS)]
+    pub const ETIMEDOUT: Self = Error(-(bindings::ETIMEDOUT as i32));
+
+    /// Owner died
+    #[cfg(CONFIG_RROS)]
+    pub const EOWNERDEAD: Self = Error(-(bindings::EOWNERDEAD as i32));
+
+    /// Identifier removed
+    #[cfg(CONFIG_RROS)]
+    pub const EIDRM: Self = Error(-(bindings::EIDRM as i32));
+
+    ///	Stale file handle
+    #[cfg(CONFIG_RROS)]
+    pub const ESTALE: Self = Error(-(bindings::ESTALE as i32));
+
+    /// Not a typewriter
+    #[cfg(CONFIG_RROS)]
+    pub const ENOTTY: Self = Error(-(bindings::ENOTTY as i32));
+
+    /// No such device or address
+    #[cfg(CONFIG_RROS)]
+    pub const ENXIO: Self = Error(-(bindings::ENXIO as i32));
+
+    /// File exists
+    #[cfg(CONFIG_RROS)]
+    pub const EEXIST: Self = Error(-(bindings::EEXIST as i32));
+
+    /// Poll cycles
+    #[cfg(CONFIG_RROS)]
+    pub const ELOOP: Self = Error(-(bindings::ELOOP as i32));
+
     /// Creates an [`Error`] from a kernel error code.
     ///
     /// It is a bug to pass an out-of-range `errno`. `EINVAL` would
@@ -334,4 +421,112 @@ where
         // therefore a negative `errno` always fits in an `i16` and will not overflow.
         Err(e) => T::from(e.to_errno() as i16),
     }
+}
+
+// # Invariant: `-bindings::MAX_ERRNO` fits in an `i16`.
+crate::static_assert!(bindings::MAX_ERRNO <= -(i16::MIN as i32) as u32);
+
+#[doc(hidden)]
+pub fn from_kernel_result_helper<T>(r: Result<T>) -> T
+where
+    T: From<i16>,
+{
+    match r {
+        Ok(v) => v,
+        // NO-OVERFLOW: negative `errno`s are no smaller than `-bindings::MAX_ERRNO`,
+        // `-bindings::MAX_ERRNO` fits in an `i16` as per invariant above,
+        // therefore a negative `errno` always fits in an `i16` and will not overflow.
+        Err(e) => T::from(e.to_errno() as i16),
+    }
+}
+
+/// Transforms a [`crate::error::Result<T>`] to a kernel C integer result.
+///
+/// This is useful when calling Rust functions that return [`crate::error::Result<T>`]
+/// from inside `extern "C"` functions that need to return an integer
+/// error result.
+///
+/// `T` should be convertible to an `i16` via `From<i16>`.
+///
+/// # Examples
+///
+/// ```ignore
+/// # use kernel::from_kernel_result;
+/// # use kernel::c_types;
+/// # use kernel::bindings;
+/// unsafe extern "C" fn probe_callback(
+///     pdev: *mut bindings::platform_device,
+/// ) -> c_types::c_int {
+///     from_kernel_result! {
+///         let ptr = devm_alloc(pdev)?;
+///         rust_helper_platform_set_drvdata(pdev, ptr);
+///         Ok(0)
+///     }
+/// }
+/// ```
+#[macro_export]
+macro_rules! from_kernel_result {
+    ($($tt:tt)*) => {{
+        $crate::error::from_kernel_result_helper((|| {
+            $($tt)*
+        })())
+    }};
+}
+
+/// Transform a kernel "error pointer" to a normal pointer.
+///
+/// Some kernel C API functions return an "error pointer" which optionally
+/// embeds an `errno`. Callers are supposed to check the returned pointer
+/// for errors. This function performs the check and converts the "error pointer"
+/// to a normal pointer in an idiomatic fashion.
+///
+/// # Examples
+///
+/// ```ignore
+/// # use kernel::prelude::*;
+/// # use kernel::from_kernel_err_ptr;
+/// # use kernel::c_types;
+/// # use kernel::bindings;
+/// fn devm_platform_ioremap_resource(
+///     pdev: &mut PlatformDevice,
+///     index: u32,
+/// ) -> Result<*mut c_types::c_void> {
+///     // SAFETY: FFI call.
+///     unsafe {
+///         from_kernel_err_ptr(bindings::devm_platform_ioremap_resource(
+///             pdev.to_ptr(),
+///             index,
+///         ))
+///     }
+/// }
+/// ```
+// TODO: remove `dead_code` marker once an in-kernel client is available.
+#[allow(dead_code)]
+pub fn from_kernel_err_ptr<T>(ptr: *mut T) -> Result<*mut T> {
+    extern "C" {
+        #[allow(improper_ctypes)]
+        fn rust_helper_is_err(ptr: *const c_types::c_void) -> bool;
+
+        #[allow(improper_ctypes)]
+        fn rust_helper_ptr_err(ptr: *const c_types::c_void) -> c_types::c_long;
+    }
+
+    // CAST: casting a pointer to `*const c_types::c_void` is always valid.
+    let const_ptr: *const c_types::c_void = ptr.cast();
+    // SAFETY: the FFI function does not deref the pointer.
+    if unsafe { rust_helper_is_err(const_ptr) } {
+        // SAFETY: the FFI function does not deref the pointer.
+        let err = unsafe { rust_helper_ptr_err(const_ptr) };
+        // CAST: if `rust_helper_is_err()` returns `true`,
+        // then `rust_helper_ptr_err()` is guaranteed to return a
+        // negative value greater-or-equal to `-bindings::MAX_ERRNO`,
+        // which always fits in an `i16`, as per the invariant above.
+        // And an `i16` always fits in an `i32`. So casting `err` to
+        // an `i32` can never overflow, and is always valid.
+        //
+        // SAFETY: `rust_helper_is_err()` ensures `err` is a
+        // negative value greater-or-equal to `-bindings::MAX_ERRNO`
+        return Err(unsafe { Error::from_errno_unchecked(err as i32) });
+    }
+    Ok(ptr)
 }

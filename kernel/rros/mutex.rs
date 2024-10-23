@@ -198,7 +198,7 @@ pub fn adjust_boost(
         // assert_hard_lock(&owner->lock);
         // assert_hard_lock(&origin->lock);
         let boosters = (*owner.locked_data().get()).boosters;
-        mutex = Arc::into_raw((*boosters).get_head().unwrap().value.clone())
+        mutex = Arc::into_foreign((*boosters).get_head().unwrap().value.clone())
             as *mut SpinLock<RrosMutex> as *mut RrosMutex;
         if mutex != origin {
             raw_spin_lock(&mut (*mutex).lock as *mut bindings::hard_spinlock_t);
@@ -235,8 +235,8 @@ pub fn adjust_boost(
                 }
                 return Ok(0);
             }
-            let contender_ptr =
-                Arc::into_raw(contender.clone()) as *mut SpinLock<RrosThread> as *mut RrosThread;
+            let contender_ptr = Arc::into_foreign(contender.clone()) as *mut SpinLock<RrosThread>
+                as *mut RrosThread;
             if contender_ptr == 0 as *mut RrosThread {
                 let contender = (*(*mutex).wchan.wait_list)
                     .get_head()
@@ -348,8 +348,8 @@ pub fn track_owner(mutex: *mut RrosMutex, owner: Arc<SpinLock<RrosThread>>) {
 
 pub fn ref_and_track_owner(mutex: *mut RrosMutex, owner: Arc<SpinLock<RrosThread>>) {
     unsafe {
-        let ptr1 = Arc::into_raw((*mutex).owner.clone().unwrap()) as *mut SpinLock<RrosThread>;
-        let ptr2 = Arc::into_raw(owner.clone()) as *mut SpinLock<RrosThread>;
+        let ptr1 = Arc::into_foreign((*mutex).owner.clone().unwrap()) as *mut SpinLock<RrosThread>;
+        let ptr2 = Arc::into_foreign(owner.clone()) as *mut SpinLock<RrosThread>;
         if ptr1 != ptr2 {
             // rros_get_element(&owner->element);
             track_owner(mutex, owner.clone());
@@ -485,7 +485,8 @@ pub fn rros_detect_boost_drop() {
             // raw_spin_lock(&mut (*mutex).lock as *mut bindings::hard_spinlock_t);
             for j in 1..=(*wait_list).len() {
                 let waiter_node = (*wait_list).get_by_index(j).unwrap().value.clone();
-                waiter = Arc::into_raw(waiter_node) as *mut SpinLock<RrosThread> as *mut RrosThread;
+                waiter =
+                    Arc::into_foreign(waiter_node) as *mut SpinLock<RrosThread> as *mut RrosThread;
                 if (*waiter).state & T_WOLI == 0 {
                     continue;
                 }
@@ -594,7 +595,12 @@ pub fn rros_trylock_mutex(mutex: *mut RrosMutex) -> Result<i32> {
     // 	}
     // }
 
-    unsafe { set_current_owner(mutex, Arc::from_raw(curr as *const SpinLock<RrosThread>)) };
+    unsafe {
+        set_current_owner(
+            mutex,
+            Arc::from_foreign(curr as *const SpinLock<RrosThread>),
+        )
+    };
     disable_inband_switch(curr as *mut SpinLock<RrosThread> as *mut RrosThread);
 
     return Ok(0);
@@ -747,7 +753,7 @@ pub fn rros_lock_mutex_timeout(
                 get_owner_handle(currh, mutex) as i32,
             ) as FundleT;
             if h == RROS_NO_HANDLE {
-                let temp = Arc::from_raw(rros_current() as *const SpinLock<RrosThread>);
+                let temp = Arc::from_foreign(rros_current() as *const SpinLock<RrosThread>);
                 let test = temp.clone();
                 pr_debug!("{:p}", test);
                 pr_debug!("-1-1-1-1-1-1-1-1-1-1-1-1--1-1-11-1-1-1-1-1-1");
@@ -798,16 +804,17 @@ pub fn rros_lock_mutex_timeout(
             pr_debug!("33333333333333333333333333333333");
             // owner = rros_get_factory_element_by_fundle(&rros_thread_factory,rros_get_index(h),struct RrosThread);
             let owner_ptr =
-                Arc::into_raw(owner.clone()) as *mut SpinLock<RrosThread> as *mut RrosThread;
+                Arc::into_foreign(owner.clone()) as *mut SpinLock<RrosThread> as *mut RrosThread;
             if owner_ptr == 0 as *mut RrosThread {
                 untrack_owner(mutex);
                 raw_spin_unlock(curr_lock);
                 lock::raw_spin_unlock_irqrestore(flags);
                 return Err(kernel::Error::EOWNERDEAD);
             }
-            let ptr1 = Arc::into_raw((*mutex).owner.clone().unwrap()) as *mut SpinLock<RrosThread>
-                as *mut RrosThread;
-            let ptr2 = Arc::into_raw(owner.clone()) as *mut SpinLock<RrosThread> as *mut RrosThread;
+            let ptr1 = Arc::into_foreign((*mutex).owner.clone().unwrap())
+                as *mut SpinLock<RrosThread> as *mut RrosThread;
+            let ptr2 =
+                Arc::into_foreign(owner.clone()) as *mut SpinLock<RrosThread> as *mut RrosThread;
             if ptr1 != ptr2 {
                 track_owner(mutex, owner.clone());
             } else {
@@ -826,7 +833,7 @@ pub fn rros_lock_mutex_timeout(
                 let info = (*owner.locked_data().get()).info;
                 let wwake = (*owner.locked_data().get()).wwake;
                 if info & T_WAKEN != 0 && wwake == &mut (*mutex).wchan as *mut rros_wait_channel {
-                    let temp = Arc::from_raw(curr as *const SpinLock<RrosThread>);
+                    let temp = Arc::from_foreign(curr as *const SpinLock<RrosThread>);
                     set_current_owner_locked(mutex, temp.clone());
                     let owner_rq_lock = &mut (*(*owner.locked_data().get()).rq.unwrap()).lock
                         as *mut bindings::hard_spinlock_t;
@@ -907,10 +914,10 @@ pub fn rros_lock_mutex_timeout(
                             (*boosters).add_head((*((*mutex).next_booster)).value.clone());
                         }
                     }
-                    let temp = Arc::from_raw(curr as *const SpinLock<RrosThread>);
+                    let temp = Arc::from_foreign(curr as *const SpinLock<RrosThread>);
                     ret = inherit_thread_priority(owner.clone(), temp.clone(), temp.clone());
                 } else {
-                    let temp = Arc::from_raw(curr as *const SpinLock<RrosThread>);
+                    let temp = Arc::from_foreign(curr as *const SpinLock<RrosThread>);
                     ret = check_lock_chain(owner.clone(), temp.clone());
                 }
             } else {
@@ -942,7 +949,7 @@ pub fn rros_lock_mutex_timeout(
                         (*(*mutex).wchan.wait_list).add_head((*wait_next).value.clone());
                     }
                 }
-                let temp = Arc::from_raw(curr as *const SpinLock<RrosThread>);
+                let temp = Arc::from_foreign(curr as *const SpinLock<RrosThread>);
                 ret = check_lock_chain(owner.clone(), temp.clone());
             }
             raw_spin_unlock(owner_lock);
@@ -1048,7 +1055,7 @@ pub fn transfer_ownership(mutex: *mut RrosMutex, lastowner: Arc<SpinLock<RrosThr
 
 pub fn __rros_unlock_mutex(mutex: *mut RrosMutex) -> Result<i32> {
     let mut curr = unsafe { &mut *rros_current() };
-    let owner = unsafe { Arc::from_raw(curr as *const SpinLock<RrosThread>) };
+    let owner = unsafe { Arc::from_foreign(curr as *const SpinLock<RrosThread>) };
     let flags: u32 = 0;
     let currh: FundleT = 0;
     let mut h: FundleT = 0;
@@ -1113,7 +1120,7 @@ pub fn rros_drop_tracking_mutexes(curr: *mut RrosThread) {
         let mut flags = lock::raw_spin_lock_irqsave();
 
         while (*(*curr).trackers).is_empty() == false {
-            mutex = Arc::into_raw((*(*(*curr).trackers).get_head().unwrap()).value.clone())
+            mutex = Arc::into_foreign((*(*(*curr).trackers).get_head().unwrap()).value.clone())
                 as *mut SpinLock<RrosMutex> as *mut RrosMutex;
             lock::raw_spin_unlock_irqrestore(flags);
             h = rros_get_index(atomic_read((*mutex).fastlock) as FundleT);
@@ -1142,15 +1149,15 @@ pub fn rros_reorder_mutex_wait(
 ) -> Result<i32> {
     unsafe {
         let waiter_ptr =
-            Arc::into_raw(waiter.clone()) as *mut SpinLock<RrosThread> as *mut RrosThread;
+            Arc::into_foreign(waiter.clone()) as *mut SpinLock<RrosThread> as *mut RrosThread;
         let originator_ptr =
-            Arc::into_raw(originator.clone()) as *mut SpinLock<RrosThread> as *mut RrosThread;
-        let mutex = wchan_to_mutex(Arc::into_raw((*waiter_ptr).wchan.clone().unwrap())
+            Arc::into_foreign(originator.clone()) as *mut SpinLock<RrosThread> as *mut RrosThread;
+        let mutex = wchan_to_mutex(Arc::into_foreign((*waiter_ptr).wchan.clone().unwrap())
             as *mut SpinLock<rros_wait_channel>
             as *mut rros_wait_channel);
         let owner = (*mutex).owner.clone().unwrap();
         let owner_ptr =
-            Arc::into_raw(owner.clone()) as *mut SpinLock<RrosThread> as *mut RrosThread;
+            Arc::into_foreign(owner.clone()) as *mut SpinLock<RrosThread> as *mut RrosThread;
         // assert_hard_lock(&waiter->lock);
         // assert_hard_lock(&originator->lock);
 
@@ -1238,9 +1245,10 @@ pub fn rros_follow_mutex_depend(
     wchan: Arc<SpinLock<rros_wait_channel>>,
     originator: Arc<SpinLock<RrosThread>>,
 ) -> Result<i32> {
-    let wchan = Arc::into_raw(wchan) as *mut SpinLock<rros_wait_channel> as *mut rros_wait_channel;
+    let wchan =
+        Arc::into_foreign(wchan) as *mut SpinLock<rros_wait_channel> as *mut rros_wait_channel;
     let originator_ref =
-        Arc::into_raw(originator.clone()) as *mut SpinLock<RrosThread> as *mut RrosThread;
+        Arc::into_foreign(originator.clone()) as *mut SpinLock<RrosThread> as *mut RrosThread;
     let mutex = wchan_to_mutex(wchan);
     let mut waiter = 0 as *mut RrosThread;
     let mut ret: Result<i32> = Ok(0);
@@ -1250,8 +1258,8 @@ pub fn rros_follow_mutex_depend(
     let mutex_lock = unsafe { &mut (*mutex).lock as *mut bindings::hard_spinlock_t };
     raw_spin_lock(mutex_lock);
     unsafe {
-        let owner_ref = Arc::into_raw((*mutex).owner.clone().unwrap()) as *mut SpinLock<RrosThread>
-            as *mut RrosThread;
+        let owner_ref = Arc::into_foreign((*mutex).owner.clone().unwrap())
+            as *mut SpinLock<RrosThread> as *mut RrosThread;
         if owner_ref == originator_ref {
             raw_spin_unlock(mutex_lock);
             return Err(kernel::Error::EDEADLK);
@@ -1263,7 +1271,7 @@ pub fn rros_follow_mutex_depend(
                 .unwrap()
                 .value
                 .clone();
-            waiter = Arc::into_raw(waiter_node) as *mut SpinLock<RrosThread> as *mut RrosThread;
+            waiter = Arc::into_foreign(waiter_node) as *mut SpinLock<RrosThread> as *mut RrosThread;
 
             let waiter_lock = &mut (*waiter).lock as *mut bindings::hard_spinlock_t;
             raw_spin_lock(waiter_lock);
@@ -1293,7 +1301,7 @@ pub fn rros_follow_mutex_depend(
 pub fn rros_commit_mutex_ceiling(mutex: *mut RrosMutex) -> Result<i32> {
     unsafe {
         let curr = &mut *rros_current();
-        let thread = unsafe { Arc::from_raw(curr as *const SpinLock<RrosThread>) };
+        let thread = unsafe { Arc::from_foreign(curr as *const SpinLock<RrosThread>) };
         let lockp = (*mutex).fastlock;
         let flags: u32 = 0;
         let mut oldh: i32 = 0;

@@ -60,7 +60,7 @@ impl FileOperations for XbufOps {
         let ret = xbuf_read(file, data);
         pr_debug!("the result of xbuf read is {}", ret);
         if ret < 0 {
-            Err(Error::from_kernel_errno(ret))
+            Err(Error::from_errno(ret))
         } else {
             Ok(ret as usize)
         }
@@ -71,7 +71,7 @@ impl FileOperations for XbufOps {
         let ret = xbuf_oob_read(file, data);
         pr_debug!("the result of xbuf oob_read is {}", ret);
         if ret < 0 {
-            Err(Error::from_kernel_errno(ret))
+            Err(Error::from_errno(ret))
         } else {
             Ok(ret as usize)
         }
@@ -87,7 +87,7 @@ impl FileOperations for XbufOps {
         let ret = xbuf_write(file, data);
         pr_debug!("the result of xbuf write is {}", ret);
         if ret < 0 {
-            Err(Error::from_kernel_errno(ret))
+            Err(Error::from_errno(ret))
         } else {
             Ok(ret as usize)
         }
@@ -98,7 +98,7 @@ impl FileOperations for XbufOps {
         let ret = xbuf_oob_write(file, data);
         pr_debug!("the result of xbuf oob_write is {}", ret);
         if ret < 0 {
-            Err(Error::from_kernel_errno(ret))
+            Err(Error::from_errno(ret))
         } else {
             Ok(ret as usize)
         }
@@ -874,7 +874,7 @@ pub fn rros_get_xbuf(rfd: u32, rfilpp: &mut *mut RrosFile) -> Option<NonNull<Rro
     let rfilp = rros_get_file(rfd);
     match rfilp {
         Some(rfilp) => {
-            // unsafe{ (*rfilpp) = Arc::into_raw(rfilp) as *mut RrosFile };
+            // unsafe{ (*rfilpp) = Arc::into_foreign(rfilp) as *mut RrosFile };
             (*rfilpp) = rfilp.as_ptr();
             let fbind: *const RrosFileBinding =
                 unsafe { (*(*(*rfilpp)).filp).private_data as *const RrosFileBinding };

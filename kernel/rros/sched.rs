@@ -872,15 +872,15 @@ impl RrosThreadWithLock {
     /// transmute back
     pub unsafe fn transmute_to_original(ptr: Arc<Self>) -> Arc<SpinLock<RrosThread>> {
         unsafe {
-            let ptr = Arc::into_raw(ptr) as *mut SpinLock<RrosThread>;
-            Arc::from_raw(transmute(NonNull::new_unchecked(ptr).as_ptr()))
+            let ptr = Arc::into_foreign(ptr) as *mut SpinLock<RrosThread>;
+            Arc::from_foreign(transmute(NonNull::new_unchecked(ptr).as_ptr()))
         }
     }
 
     pub unsafe fn new_from_curr_thread() -> Arc<Self> {
         unsafe {
             let ptr = transmute(NonNull::new_unchecked(rros_current()).as_ptr());
-            let ret = Arc::from_raw(ptr);
+            let ret = Arc::from_foreign(ptr);
             Arc::increment_strong_count(ptr);
             ret
         }
@@ -1205,10 +1205,10 @@ fn init_root_thread(rq_ptr: *mut rros_rq) -> Result<usize> {
         (*rq_ptr).root_thread = Some(tmp); //Arc::try_new(thread)?
         (*(*rq_ptr).root_thread.as_mut().unwrap().locked_data().get()).init()?;
         let pinned = Pin::new_unchecked(
-            &mut *(Arc::into_raw((*rq_ptr).root_thread.clone().unwrap())
+            &mut *(Arc::into_foreign((*rq_ptr).root_thread.clone().unwrap())
                 as *mut SpinLock<RrosThread>),
         );
-        // &mut *Arc::into_raw( *(*rq_ptr).root_thread.clone().as_mut().unwrap()) as &mut SpinLock<RrosThread>
+        // &mut *Arc::into_foreign( *(*rq_ptr).root_thread.clone().as_mut().unwrap()) as &mut SpinLock<RrosThread>
         spinlock_init!(pinned, "rros_threads");
         // (*rq_ptr).root_thread.as_mut().unwrap().assume_init();
     }
@@ -1305,7 +1305,7 @@ fn init_rq_ptr_inband_timer(rq_ptr: *mut rros_rq) -> Result<usize> {
             .get())
         .init()?;
         let pinned = Pin::new_unchecked(
-            &mut *(Arc::into_raw(
+            &mut *(Arc::into_foreign(
                 (*rq_ptr)
                     .fifo
                     .runnable
@@ -1317,7 +1317,7 @@ fn init_rq_ptr_inband_timer(rq_ptr: *mut rros_rq) -> Result<usize> {
                     .clone(),
             ) as *mut SpinLock<RrosThread>),
         );
-        // &mut *Arc::into_raw( *(*rq_ptr).root_thread.clone().as_mut().unwrap()) as &mut SpinLock<RrosThread>
+        // &mut *Arc::into_foreign( *(*rq_ptr).root_thread.clone().as_mut().unwrap()) as &mut SpinLock<RrosThread>
         spinlock_init!(pinned, "rros_threads");
 
         // let mut x = SpinLock::new(RrosThread::new()?);
@@ -2518,7 +2518,7 @@ unsafe extern "C" fn rust_resume_oob_task(ptr: *mut c_types::c_void, cpu: i32) {
     let thread: Arc<SpinLock<RrosThread>>;
 
     unsafe {
-        thread = Arc::from_raw(ptr as *mut SpinLock<RrosThread>);
+        thread = Arc::from_foreign(ptr as *mut SpinLock<RrosThread>);
         pr_debug!(
             "0600 uninit_thread: x ref is {}",
             Arc::strong_count(&thread)

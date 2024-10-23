@@ -924,7 +924,7 @@ fn wait_events(
                 count = collect_events(group, u_set, wreq.nrset, &mut None);
             } else {
                 // error code is `num`
-                count = Err(Error::from_kernel_errno(num));
+                count = Err(Error::from_errno(num));
             }
             break;
         }

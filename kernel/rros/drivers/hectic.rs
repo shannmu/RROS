@@ -224,7 +224,7 @@ impl RtswitchContext {
 
         rc = task.rt_synch.wait();
         if rc < 0 {
-            return Err(Error::from_kernel_errno(rc));
+            return Err(Error::from_errno(rc));
         }
 
         if self.failed {
@@ -282,7 +282,7 @@ impl RtswitchContext {
 
         rc = from.rt_synch.wait();
         if rc < 0 {
-            return Err(Error::from_kernel_errno(rc));
+            return Err(Error::from_errno(rc));
         }
 
         if self.failed {

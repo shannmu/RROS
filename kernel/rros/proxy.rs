@@ -890,7 +890,7 @@ impl FileOperations for ProxyOps {
         let ret = proxy_read(file, data);
         pr_debug!("the result of proxy read is {}", ret);
         if ret < 0 {
-            Err(Error::from_kernel_errno(ret.try_into().unwrap()))
+            Err(Error::from_errno(ret.try_into().unwrap()))
         } else {
             Ok(ret as usize)
         }
@@ -901,7 +901,7 @@ impl FileOperations for ProxyOps {
         let ret = proxy_oob_read(file, data);
         pr_debug!("the result of proxy oob_read is {}", ret);
         if ret < 0 {
-            Err(Error::from_kernel_errno(ret.try_into().unwrap()))
+            Err(Error::from_errno(ret.try_into().unwrap()))
         } else {
             Ok(ret as usize)
         }
@@ -917,7 +917,7 @@ impl FileOperations for ProxyOps {
         let ret = proxy_write(file, data);
         pr_debug!("the result of proxy write is {}", ret);
         if ret < 0 {
-            Err(Error::from_kernel_errno(ret.try_into().unwrap()))
+            Err(Error::from_errno(ret.try_into().unwrap()))
         } else {
             Ok(ret as usize)
         }
@@ -928,7 +928,7 @@ impl FileOperations for ProxyOps {
         let ret = proxy_oob_write(file, data);
         pr_debug!("the result of proxy oob_write is {}", ret);
         if ret < 0 {
-            Err(Error::from_kernel_errno(ret.try_into().unwrap()))
+            Err(Error::from_errno(ret.try_into().unwrap()))
         } else {
             Ok(ret as usize)
         }
