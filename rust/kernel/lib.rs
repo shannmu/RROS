@@ -66,6 +66,8 @@ pub mod capability;
 #[cfg(CONFIG_RROS)]
 pub mod class;
 #[cfg(CONFIG_RROS)]
+pub mod clockchips;
+#[cfg(CONFIG_RROS)]
 pub mod completion;
 #[cfg(CONFIG_RROS)]
 pub mod cpumask;
