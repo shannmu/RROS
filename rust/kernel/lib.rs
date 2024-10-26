@@ -70,6 +70,8 @@ pub mod cred;
 #[cfg(CONFIG_RROS)]
 pub mod device;
 #[cfg(CONFIG_RROS)]
+pub mod double_linked_list;
+#[cfg(CONFIG_RROS)]
 pub mod dovetail;
 #[cfg(CONFIG_RROS)]
 pub mod fs;
