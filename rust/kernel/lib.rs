@@ -110,6 +110,8 @@ pub mod memory_rros;
 #[cfg(CONFIG_RROS)]
 pub mod mm;
 #[cfg(CONFIG_RROS)]
+pub mod net;
+#[cfg(CONFIG_RROS)]
 pub mod percpu;
 #[cfg(CONFIG_RROS)]
 pub mod percpu_defs;
