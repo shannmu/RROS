@@ -120,6 +120,8 @@ pub mod rbtree;
 #[cfg(CONFIG_RROS)]
 pub mod sched;
 #[cfg(CONFIG_RROS)]
+pub mod skbuff;
+#[cfg(CONFIG_RROS)]
 pub mod sysfs;
 #[cfg(CONFIG_RROS)]
 pub mod timekeeping;
