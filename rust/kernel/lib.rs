@@ -60,6 +60,8 @@ pub use crate::error::{Error, Result};
 #[cfg(CONFIG_RROS)]
 pub use crate::types::{ARef, AlwaysRefCounted, Mode, Opaque, ScopeGuard};
 #[cfg(CONFIG_RROS)]
+pub mod capability;
+#[cfg(CONFIG_RROS)]
 pub mod cpumask;
 #[cfg(CONFIG_RROS)]
 pub mod device;
