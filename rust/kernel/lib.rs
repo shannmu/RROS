@@ -74,6 +74,8 @@ pub mod dovetail;
 #[cfg(CONFIG_RROS)]
 pub mod fs;
 #[cfg(CONFIG_RROS)]
+pub mod interrupt;
+#[cfg(CONFIG_RROS)]
 pub mod io_buffer;
 #[cfg(CONFIG_RROS)]
 pub mod iov_iter;
