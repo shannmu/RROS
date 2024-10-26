@@ -82,6 +82,8 @@ pub mod irq_work;
 #[cfg(CONFIG_RROS)]
 pub mod irqstage;
 #[cfg(CONFIG_RROS)]
+pub mod kernelh;
+#[cfg(CONFIG_RROS)]
 pub mod ktime;
 #[cfg(CONFIG_RROS)]
 pub mod linked_list;
