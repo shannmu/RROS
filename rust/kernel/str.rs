@@ -8,7 +8,7 @@ use core::fmt::{self, Write};
 use core::ops::{self, Deref, Index};
 
 use crate::{
-    bindings,
+    bindings, c_types,
     error::{code::*, Error},
 };
 
@@ -612,4 +612,18 @@ impl<'a> TryFrom<&'a CStr> for CString {
 #[macro_export]
 macro_rules! fmt {
     ($($f:tt)*) => ( core::format_args!($($f)*) )
+}
+
+/// Call `Linux` kstrdup.
+pub fn kstrdup(s: *const c_types::c_char, gfp: bindings::gfp_t) -> *mut c_types::c_char {
+    unsafe { bindings::kstrdup(s, gfp) }
+}
+
+/// Call `Linux` memmove.
+pub fn memmove(
+    arg1: *mut c_types::c_void,
+    arg2: *const c_types::c_void,
+    arg3: c_types::c_ulong,
+) -> *mut c_types::c_void {
+    unsafe { bindings::memmove(arg1, arg2, arg3) }
 }
