@@ -27,6 +27,8 @@ pub use arc::{Ref, RefBorrow};
 #[cfg(CONFIG_RROS)]
 pub use guard::{Guard, Lock};
 #[cfg(CONFIG_RROS)]
+pub use lock::spinlock::{HardSpinlock, RawSpinLock};
+#[cfg(CONFIG_RROS)]
 pub use lock::NeedsLockClass;
 
 /// Represents a lockdep class. It's a wrapper around C's `lock_class_key`.
