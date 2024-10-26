@@ -90,28 +90,14 @@ mod drivers;
 
 module! {
     type: Rros,
-    name: b"rros",
-    author: b"Hongyu Li",
-    description: b"A rust realtime os",
-    license: b"GPL v2",
-    params: {
-        oobcpus_arg: str {
-            default: b"0-7\0",
-            permissions: 0o444,
-            description: b"which cpus in the oob",
-        },
-        init_state_arg: str {
-            default: b"enabled",
-            permissions: 0o444,
-            description: b"inital state of rros",
-        },
-        sysheap_size_arg: u32{
-            default: 0,
-            permissions: 0o444,
-            description: b"system heap size",
-        },
-    },
+    name: "rros",
+    author: "BUPT-OS Team",
+    description: "A rust realtime os",
+    license: "GPL v2",
 }
+
+const oobcpus_arg: str = b"0-7\0";
+const init_state_arg: str = b"enabled\0";
 
 /// Data associated with each CPU in the machine.
 pub struct RrosMachineCpuData {}
@@ -343,7 +329,7 @@ fn test_smp() {
 impl KernelModule for Rros {
     fn init() -> Result<Self> {
         pr_info!("Hello world from rros!\n");
-        let init_state_arg_str = str::from_utf8(init_state_arg.read())?;
+        let init_state_arg_str = str::from_utf8(init_state_arg)?;
         setup_init_state(init_state_arg_str);
 
         if RROS_RUNSTATE.load(Ordering::Relaxed) != RrosRunStates::RrosStateWarmup as u8 {
@@ -357,23 +343,17 @@ impl KernelModule for Rros {
             RROS_MACHINE_CPUDATA =
                 percpu::alloc_per_cpu(4 as usize, 4 as usize) as *mut RrosMachineCpuData
         };
-        if str::from_utf8(oobcpus_arg.read())? != "" {
-            let res = unsafe {
-                RROS_OOB_CPUS
-                    .cpulist_parse(CStr::from_bytes_with_nul(oobcpus_arg.read())?.as_char_ptr())
-            };
-            match res {
-                Ok(_o) => (pr_info!("load parameters {}\n", str::from_utf8(oobcpus_arg.read())?)),
-                Err(_e) => {
-                    pr_warn!("wrong oobcpus_arg");
-                    unsafe {
-                        RROS_OOB_CPUS.cpumask_copy(&cpu_online_mask);
-                    }
+
+        let res = unsafe {
+            RROS_OOB_CPUS.cpulist_parse(CStr::from_bytes_with_nul(oobcpus_arg)?.as_char_ptr())
+        };
+        match res {
+            Ok(_o) => (pr_info!("load parameters {}\n", str::from_utf8(oobcpus_arg)?)),
+            Err(_e) => {
+                pr_warn!("wrong oobcpus_arg");
+                unsafe {
+                    RROS_OOB_CPUS.cpumask_copy(&cpu_online_mask);
                 }
-            }
-        } else {
-            unsafe {
-                RROS_OOB_CPUS.cpumask_copy(&cpu_online_mask);
             }
         }
 

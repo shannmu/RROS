@@ -197,7 +197,11 @@ pub(crate) fn module(ts: TokenStream) -> TokenStream {
             /// The module name.
             ///
             /// Used by the printing macros, e.g. [`info!`].
-            const __LOG_PREFIX: &[u8] = b\"{name}\\0\";
+            #[cfg(CONFIG_RROS)]
+            pub(crate) const __LOG_PREFIX: &[u8] = b\"{name}\\0\";
+
+            #[cfg(not(CONFIG_RROS))]
+            pub const __LOG_PREFIX: &[u8] = b\"{name}\\0\";
 
             /// The \"Rust loadable module\" mark.
             //

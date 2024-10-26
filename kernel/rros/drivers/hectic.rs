@@ -64,10 +64,10 @@ static mut FP_FEATURES: u32 = 0;
 
 module! {
     type: Hecticdev,
-    name: b"hectic",
-    author: b"wxg",
-    description: b"hectic driver",
-    license: b"GPL v2",
+    name: "hectic",
+    author: "wxg",
+    description: "hectic driver",
+    license: "GPL v2",
 }
 
 #[repr(C)]
