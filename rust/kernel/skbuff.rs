@@ -30,7 +30,8 @@ pub fn skb_pull(skb: *mut bindings::sk_buff, len: c_types::c_uint) -> *mut c_typ
 pub fn __netdev_alloc_oob_skb(
     dev: *mut bindings::net_device,
     len: usize,
+    headroom: usize,
     gfp_mask: u32,
 ) -> *mut bindings::sk_buff {
-    unsafe { bindings::__netdev_alloc_oob_skb(dev, len, gfp_mask) }
+    unsafe { bindings::__netdev_alloc_oob_skb(dev, len, headroom, gfp_mask) }
 }
