@@ -64,6 +64,8 @@ pub mod bitmap;
 #[cfg(CONFIG_RROS)]
 pub mod capability;
 #[cfg(CONFIG_RROS)]
+pub mod class;
+#[cfg(CONFIG_RROS)]
 pub mod completion;
 #[cfg(CONFIG_RROS)]
 pub mod cpumask;

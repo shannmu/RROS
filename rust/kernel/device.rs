@@ -126,7 +126,7 @@ impl Device {
 /// Class dev_node call back wrapper
 pub trait ClassDevnode {
     /// dev_node call back function
-    fn devnode(dev: &mut Device, mode: &mut u16) -> *mut c_types::c_char;
+    fn devnode(dev: &Device, mode: &mut u16) -> *mut c_types::c_char;
 }
 
 /// dev_node call back wrapper
@@ -144,7 +144,7 @@ pub(crate) struct ClassDevnodeVtable<T: ClassDevnode>(PhantomData<T>);
 
 impl<T: ClassDevnode> ClassDevnodeVtable<T> {
     pub(crate) unsafe fn get_class_devnode_callback() -> Option<
-        unsafe extern "C" fn(dev: *mut bindings::device, mode: *mut u16) -> *mut c_types::c_char,
+        unsafe extern "C" fn(dev: *const bindings::device, mode: *mut u16) -> *mut c_types::c_char,
     > {
         Some(class_devnode_callback::<T>)
     }
@@ -164,10 +164,10 @@ impl<T: Devnode> DevnodeVtable<T> {
 }
 
 unsafe extern "C" fn class_devnode_callback<T: ClassDevnode>(
-    dev: *mut bindings::device,
+    dev: *const bindings::device,
     mode: *mut u16,
 ) -> *mut c_types::c_char {
-    let dev = &mut Device(dev);
+    let dev = &Device(dev.cast_mut());
     let mode = unsafe { &mut *mode };
     T::devnode(dev, mode)
 }
