@@ -113,6 +113,8 @@ pub mod uidgid;
 pub mod user_ptr;
 #[cfg(CONFIG_RROS)]
 pub mod vmalloc;
+#[cfg(CONFIG_RROS)]
+pub mod waitqueue;
 
 #[doc(hidden)]
 pub use bindings;
