@@ -98,6 +98,8 @@ pub mod mm;
 #[cfg(CONFIG_RROS)]
 pub mod percpu;
 #[cfg(CONFIG_RROS)]
+pub mod percpu_defs;
+#[cfg(CONFIG_RROS)]
 pub mod premmpt;
 #[cfg(CONFIG_RROS)]
 pub mod raw_list;
