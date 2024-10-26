@@ -238,6 +238,8 @@ static_assert(sizeof(size_t) == sizeof(uintptr_t) &&
 #include <linux/kdev_t.h>
 #include <linux/sched.h>
 #include <asm/cpufeature.h>
+#include <linux/delay.h>
+
 __noreturn void rust_helper_BUG(void)
 {
 	BUG();
@@ -1531,6 +1533,12 @@ void rust_helper_sema_init(struct semaphore *sem, int val)
 	sema_init(sem, val);
 }
 EXPORT_SYMBOL_GPL(rust_helper_sema_init);
+
+void rust_helper_usleep_range(unsigned long min, unsigned long max)
+{
+	usleep_range(min, max);
+}
+EXPORT_SYMBOL_GPL(rust_helper_usleep_range);
 
 // void rust_helper_anon_inode_getfile(const char *name,
 // 				const struct file_operations *fops,
