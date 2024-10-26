@@ -13,6 +13,8 @@ mod pinned_drop;
 mod vtable;
 mod zeroable;
 
+mod no_mangle;
+
 use proc_macro::TokenStream;
 
 /// Declares a kernel module.
@@ -362,4 +364,10 @@ pub fn paste(input: TokenStream) -> TokenStream {
 #[proc_macro_derive(Zeroable)]
 pub fn derive_zeroable(input: TokenStream) -> TokenStream {
     zeroable::derive(input)
+}
+
+/// Declare a function with the #[no_mangle] attribute and do not need to use [`bindings`] in the parameters' types.
+#[proc_macro]
+pub fn no_mangle_function_declaration(ts: TokenStream) -> TokenStream {
+    no_mangle::no_mangle_function_declaration(ts)
 }
