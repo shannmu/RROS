@@ -30,8 +30,9 @@ use crate::{
     thread::{rros_current, T_RMID},
     timeout::RrosTmode,
 };
-use alloc::{rc::Rc, sync::Arc};
+use alloc::rc::Rc;
 use bindings::{list_head, POLLERR, POLLHUP, POLLIN, POLLNVAL, POLLOUT, POLLRDNORM, POLLWRNORM};
+use kernel::sync::Arc;
 use kernel::{
     bindings, c_types, container_of,
     device::DeviceType,
