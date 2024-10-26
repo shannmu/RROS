@@ -76,6 +76,8 @@ pub mod irqstage;
 #[cfg(CONFIG_RROS)]
 pub mod ktime;
 #[cfg(CONFIG_RROS)]
+pub mod linked_list;
+#[cfg(CONFIG_RROS)]
 pub mod memory_rros;
 #[cfg(CONFIG_RROS)]
 pub mod mm;
@@ -83,6 +85,10 @@ pub mod mm;
 pub mod percpu;
 #[cfg(CONFIG_RROS)]
 pub mod premmpt;
+#[cfg(CONFIG_RROS)]
+pub mod raw_list;
+#[cfg(CONFIG_RROS)]
+pub mod sched;
 #[cfg(CONFIG_RROS)]
 pub mod timekeeping;
 #[cfg(CONFIG_RROS)]
