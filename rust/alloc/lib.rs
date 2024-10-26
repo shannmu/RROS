@@ -111,7 +111,7 @@
 #![feature(coerce_unsized)]
 #![feature(const_align_of_val)]
 #![feature(const_box)]
-#![cfg_attr(not(no_borrow), feature(const_cow_is_borrowed))]
+#![cfg_attr(CONFIG_RROS, feature(const_cow_is_borrowed))]
 #![feature(const_eval_select)]
 #![feature(const_maybe_uninit_as_mut_ptr)]
 #![feature(const_maybe_uninit_write)]
@@ -257,14 +257,28 @@ pub mod str;
 pub mod string;
 #[cfg(all(not(no_rc), not(no_sync), target_has_atomic = "ptr"))]
 pub mod sync;
-#[cfg(all(not(no_global_oom_handling), not(no_rc), not(no_sync), target_has_atomic = "ptr"))]
+#[cfg(all(
+    not(no_global_oom_handling),
+    not(no_rc),
+    not(no_sync),
+    target_has_atomic = "ptr"
+))]
 pub mod task;
 #[cfg(test)]
 mod tests;
 pub mod vec;
 
+#[cfg(CONFIG_RROS)]
+pub mod borrow;
+#[cfg(CONFIG_RROS)]
+pub mod rc;
+
 #[doc(hidden)]
-#[unstable(feature = "liballoc_internals", issue = "none", reason = "implementation detail")]
+#[unstable(
+    feature = "liballoc_internals",
+    issue = "none",
+    reason = "implementation detail"
+)]
 pub mod __export {
     pub use core::format_args;
 }
@@ -279,8 +293,11 @@ pub(crate) mod test_helpers {
         let mut hasher = std::collections::hash_map::RandomState::new().build_hasher();
         std::panic::Location::caller().hash(&mut hasher);
         let hc64 = hasher.finish();
-        let seed_vec =
-            hc64.to_le_bytes().into_iter().chain(0u8..8).collect::<crate::vec::Vec<u8>>();
+        let seed_vec = hc64
+            .to_le_bytes()
+            .into_iter()
+            .chain(0u8..8)
+            .collect::<crate::vec::Vec<u8>>();
         let seed: [u8; 16] = seed_vec.as_slice().try_into().unwrap();
         rand::SeedableRng::from_seed(seed)
     }
