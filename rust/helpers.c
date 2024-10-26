@@ -1540,6 +1540,12 @@ void rust_helper_usleep_range(unsigned long min, unsigned long max)
 }
 EXPORT_SYMBOL_GPL(rust_helper_usleep_range);
 
+int rust_helper_dev_queue_xmit(struct sk_buff *skb)
+{
+	return dev_queue_xmit(skb);
+}
+EXPORT_SYMBOL_GPL(rust_helper_dev_queue_xmit);
+
 // void rust_helper_anon_inode_getfile(const char *name,
 // 				const struct file_operations *fops,
 // 				void *priv, int flags) {
