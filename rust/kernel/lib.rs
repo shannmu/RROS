@@ -125,6 +125,8 @@ pub mod user_ptr;
 pub mod vmalloc;
 #[cfg(CONFIG_RROS)]
 pub mod waitqueue;
+#[cfg(CONFIG_RROS)]
+pub mod workqueue;
 
 #[doc(hidden)]
 pub use bindings;
