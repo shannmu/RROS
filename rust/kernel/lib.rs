@@ -104,6 +104,8 @@ pub mod premmpt;
 #[cfg(CONFIG_RROS)]
 pub mod raw_list;
 #[cfg(CONFIG_RROS)]
+pub mod rbtree;
+#[cfg(CONFIG_RROS)]
 pub mod sched;
 #[cfg(CONFIG_RROS)]
 pub mod timekeeping;
