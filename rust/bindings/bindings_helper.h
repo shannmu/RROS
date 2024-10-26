@@ -52,6 +52,7 @@
 #include <linux/capability.h>
 #include <linux/anon_inodes.h>
 #include <kunit/test.h>
+#include <linux/if_vlan.h>
 #endif // CONFIG_RROS
 
 /* `bindgen` gets confused at certain things. */

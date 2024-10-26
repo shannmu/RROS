@@ -82,6 +82,8 @@ pub mod endian;
 #[cfg(CONFIG_RROS)]
 pub mod fs;
 #[cfg(CONFIG_RROS)]
+pub mod if_vlan;
+#[cfg(CONFIG_RROS)]
 pub mod interrupt;
 #[cfg(CONFIG_RROS)]
 pub mod io_buffer;
