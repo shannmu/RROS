@@ -70,6 +70,8 @@ pub mod io_buffer;
 #[cfg(CONFIG_RROS)]
 pub mod iov_iter;
 #[cfg(CONFIG_RROS)]
+pub mod irq_work;
+#[cfg(CONFIG_RROS)]
 pub mod irqstage;
 #[cfg(CONFIG_RROS)]
 pub mod ktime;
