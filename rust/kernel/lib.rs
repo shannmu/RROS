@@ -66,6 +66,8 @@ pub mod completion;
 #[cfg(CONFIG_RROS)]
 pub mod cpumask;
 #[cfg(CONFIG_RROS)]
+pub mod cred;
+#[cfg(CONFIG_RROS)]
 pub mod device;
 #[cfg(CONFIG_RROS)]
 pub mod dovetail;
