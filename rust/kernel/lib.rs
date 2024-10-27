@@ -108,6 +108,8 @@ pub mod linked_list;
 #[cfg(CONFIG_RROS)]
 pub mod memory_rros;
 #[cfg(CONFIG_RROS)]
+pub mod memory_rros_test;
+#[cfg(CONFIG_RROS)]
 pub mod mm;
 #[cfg(CONFIG_RROS)]
 pub mod net;
@@ -121,6 +123,8 @@ pub mod percpu_defs;
 pub mod premmpt;
 #[cfg(CONFIG_RROS)]
 pub mod ptrace;
+#[cfg(CONFIG_RROS)]
+pub mod random;
 #[cfg(CONFIG_RROS)]
 pub mod raw_list;
 #[cfg(CONFIG_RROS)]
