@@ -35,13 +35,15 @@ mod clock_test;
 use clock::rros_clock_init;
 #[macro_use]
 mod list;
+mod guard;
 mod list_test;
 mod lock;
 mod memory;
+#[cfg(CONFIG_RROS_TEST)]
 mod memory_test;
 mod monitor;
-// mod mutex;
-mod guard;
+#[cfg(CONFIG_RROS_UNSTABLE_MUTEX)]
+mod mutex;
 mod sched_test;
 mod stax;
 mod syscall;
@@ -87,8 +89,8 @@ module! {
     license: "GPL v2",
 }
 
-const oobcpus_arg: str = b"0-7\0";
-const init_state_arg: str = b"enabled\0";
+const oobcpus_arg: &'static [u8] = b"0-7\0";
+const init_state_arg: &'static [u8] = b"enabled\0";
 
 /// Data associated with each CPU in the machine.
 pub struct RrosMachineCpuData {}
@@ -304,6 +306,8 @@ fn test_fifo() {
         }
     }
 }
+
+#[cfg(CONFIG_RROS_TEST)]
 fn test_mem() {
     memory_test::mem_test();
 }
