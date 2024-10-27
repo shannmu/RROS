@@ -1,13 +1,3 @@
-#![no_std]
-#![feature(allocator_api, global_asm)]
-#![feature(
-    const_fn_transmute,
-    array_map,
-    get_mut_unchecked,
-    maybe_uninit_extra,
-    new_uninit
-)]
-
 //! This file is the entry point of the rros kernel module.
 //! Importing necessary features and modules
 
