@@ -132,6 +132,8 @@ pub mod socket;
 #[cfg(CONFIG_RROS)]
 pub mod sysfs;
 #[cfg(CONFIG_RROS)]
+pub mod tick;
+#[cfg(CONFIG_RROS)]
 pub mod timekeeping;
 #[cfg(CONFIG_RROS)]
 pub mod uidgid;
