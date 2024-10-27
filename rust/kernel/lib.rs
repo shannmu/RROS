@@ -118,6 +118,8 @@ pub mod percpu_defs;
 #[cfg(CONFIG_RROS)]
 pub mod premmpt;
 #[cfg(CONFIG_RROS)]
+pub mod ptrace;
+#[cfg(CONFIG_RROS)]
 pub mod raw_list;
 #[cfg(CONFIG_RROS)]
 pub mod rbtree;
