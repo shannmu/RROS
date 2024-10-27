@@ -62,7 +62,7 @@ struct Pair {
     size: u32,
 }
 impl Pair {
-    pub fn new(addr: *mut u8, size: u32) -> Self {
+    pub(crate) fn new(addr: *mut u8, size: u32) -> Self {
         Pair { addr, size }
     }
 }
