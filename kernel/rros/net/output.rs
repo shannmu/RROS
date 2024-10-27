@@ -7,7 +7,6 @@ use core::ffi::c_void;
 use kernel::{
     bindings, init_static_sync, interrupt,
     irq_work::IrqWork,
-    netdevice,
     sync::{Lock, SpinLock},
     Error, Result,
 };
@@ -113,7 +112,7 @@ fn skb_inband_xmit_backlog() {
             {
                 let mut ref_skb = RrosSkBuff::from_raw_ptr(skb);
                 uncharge_socke_wmem(&mut ref_skb);
-                netdevice::dev_queue_xmit(skb);
+                bindings::dev_queue_xmit(skb);
             },
             __bindgen_anon_1.list
         );
@@ -159,7 +158,7 @@ pub fn rros_net_transmit(mut skb: &mut RrosSkBuff) -> Result<()> {
 
     if kernel::premmpt::running_inband().is_ok() {
         uncharge_socke_wmem(&mut skb);
-        netdevice::dev_queue_xmit(skb.0.as_ptr());
+        bindings::dev_queue_xmit(skb.0.as_ptr());
     }
 
     let flags = OOB_TX_RELAY.irq_lock_noguard();
