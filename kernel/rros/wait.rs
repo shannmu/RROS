@@ -14,7 +14,7 @@ use kernel::sync::Arc;
 use core::{clone::Clone, ops::FnMut, ptr::NonNull, sync::atomic::AtomicBool};
 
 use kernel::{
-    bindings, delay,
+    bindings,
     ktime::KtimeT,
     linked_list::List,
     prelude::*,
@@ -318,7 +318,7 @@ pub fn wait_test() {
     );
     runner.run(c_str!("test wait"));
     for _i in 0..10 {
-        delay::usleep_range(10000, 20000);
+        bindings::rust_helper_usleep_range(10000, 20000);
         let flags = unsafe { (*ptr_queue).lock.raw_spin_lock_irqsave() };
         unsafe { (*flag_ptr).store(true, Relaxed) };
 
