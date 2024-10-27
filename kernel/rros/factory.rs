@@ -275,7 +275,7 @@ pub enum RustFile {
 pub struct RrosDevnode;
 
 impl device::ClassDevnode for RrosDevnode {
-    fn devnode(dev: &mut device::Device, _mode: &mut u16) -> *mut c_types::c_char {
+    fn devnode(dev: &device::Device, _mode: &mut u16) -> *mut c_types::c_char {
         kernelh::_kasprintf_1(
             bindings::GFP_KERNEL,
             c_str!("rros/%s").as_char_ptr(),
