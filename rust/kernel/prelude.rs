@@ -41,3 +41,6 @@ pub use super::current;
 
 #[cfg(CONFIG_RROS)]
 pub use crate::sync::Arc;
+
+#[cfg(CONFIG_RROS)]
+pub use macros::no_mangle_function_declaration;
