@@ -273,6 +273,9 @@ pub mod borrow;
 #[cfg(CONFIG_RROS)]
 pub mod rc;
 
+#[cfg(CONFIG_RROS)]
+pub mod alloc_rros;
+
 #[doc(hidden)]
 #[unstable(
     feature = "liballoc_internals",
