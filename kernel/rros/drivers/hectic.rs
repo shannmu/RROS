@@ -24,7 +24,7 @@ use crate::{
 use kernel::{
     bindings, c_str, c_types, chrdev, class, container_of,
     cpumask::{num_online_cpus, CpumaskT},
-    device, file_operations,
+    device, error, file_operations,
     io_buffer::{IoBufferReader, IoBufferWriter, ReadableFromBytes, WritableToBytes},
     irq_work::IrqWork,
     ktime::KtimeT,
@@ -35,7 +35,7 @@ use kernel::{
     sync::{Lock, Mutex, Semaphore, SpinLock},
     task::Task,
     user_ptr::UserSlicePtr,
-    KernelModule,
+    Module, ThisModule,
 };
 
 /* hectic_task_index.flags */
@@ -776,8 +776,8 @@ pub struct Hecticdev {
     pub dev: Pin<Box<chrdev::Registration<1>>>,
 }
 
-impl KernelModule for Hecticdev {
-    fn init() -> Result<Self> {
+impl Module for Hecticdev {
+    fn init(module: &'static ThisModule) -> error::Result<Self> {
         // SAFETY: `FP_FEATURES` is assigned only once during module initialization.
         unsafe {
             FP_FEATURES = rros_detect_fpu();

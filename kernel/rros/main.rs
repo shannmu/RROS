@@ -12,7 +12,8 @@
 //! Importing necessary features and modules
 
 use kernel::{
-    bindings, c_types, chrdev, cpumask::CpumaskT, dovetail, irqstage, percpu, prelude::*, str::CStr,
+    bindings, c_types, chrdev, cpumask::CpumaskT, dovetail, error, irqstage, percpu, prelude::*,
+    str::CStr, Module, ThisModule,
 };
 
 use core::str;
@@ -326,8 +327,8 @@ fn test_smp() {
     smp_test::smp_test_parallel_execution();
 }
 
-impl KernelModule for Rros {
-    fn init() -> Result<Self> {
+impl Module for Rros {
+    fn init(module: &'static ThisModule) -> error::Result<Self> {
         pr_info!("Hello world from rros!\n");
         let init_state_arg_str = str::from_utf8(init_state_arg)?;
         setup_init_state(init_state_arg_str);
