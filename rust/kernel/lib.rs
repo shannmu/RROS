@@ -112,6 +112,8 @@ pub mod mm;
 #[cfg(CONFIG_RROS)]
 pub mod net;
 #[cfg(CONFIG_RROS)]
+pub mod notifier;
+#[cfg(CONFIG_RROS)]
 pub mod percpu;
 #[cfg(CONFIG_RROS)]
 pub mod percpu_defs;
