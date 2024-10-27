@@ -14,6 +14,8 @@ pub mod guard;
 pub mod lock;
 #[cfg(not(CONFIG_RROS))]
 mod locked_by;
+#[cfg(CONFIG_RROS)]
+mod semaphore;
 
 pub use arc::{Arc, ArcBorrow, UniqueArc};
 pub use condvar::CondVar;
@@ -32,6 +34,8 @@ pub use lock::mutex::{mutex_lock, mutex_unlock};
 pub use lock::spinlock::{HardSpinlock, RawSpinLock};
 #[cfg(CONFIG_RROS)]
 pub use lock::NeedsLockClass;
+#[cfg(CONFIG_RROS)]
+pub use semaphore::Semaphore;
 
 /// Represents a lockdep class. It's a wrapper around C's `lock_class_key`.
 #[repr(transparent)]
