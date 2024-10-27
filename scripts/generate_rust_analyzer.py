@@ -99,6 +99,7 @@ def generate_crates(srctree, objtree, sysroot_src, external_src, cfgs):
         ["core", "alloc", "macros", "build_error", "bindings"],
         cfg=cfg,
     )
+    
     crates[-1]["source"] = {
         "include_dirs": [
             str(srctree / "rust" / "kernel"),
@@ -116,7 +117,7 @@ def generate_crates(srctree, objtree, sysroot_src, external_src, cfgs):
     # Then, the rest outside of `rust/`.
     #
     # We explicitly mention the top-level folders we want to cover.
-    extra_dirs = map(lambda dir: srctree / dir, ("samples", "drivers"))
+    extra_dirs = map(lambda dir: srctree / dir, ("samples", "drivers", "kernel/rros"))
     if external_src is not None:
         extra_dirs = [external_src]
     for folder in extra_dirs:
