@@ -886,7 +886,7 @@ fn clock_sleep(clock: &RrosClock, ts64: Timespec64) -> Result<i32> {
     if let Ok(_) = rros_delay(timeout, RrosTmode::RrosAbs, clock) {
         return Ok(0);
     } else {
-        if Task::current().signal_pending() {
+        if unsafe { Task::current().signal_pending() } {
             restart = unsafe { (*Task::current_ptr()).restart_block };
             unsafe {
                 restart.__bindgen_anon_1.nanosleep.expires = timeout as u64;

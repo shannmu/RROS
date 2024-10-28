@@ -39,7 +39,6 @@ mod guard;
 mod list_test;
 mod lock;
 mod memory;
-#[cfg(CONFIG_RROS_TEST)]
 mod memory_test;
 mod monitor;
 #[cfg(CONFIG_RROS_UNSTABLE_MUTEX)]
@@ -307,7 +306,6 @@ fn test_fifo() {
     }
 }
 
-#[cfg(CONFIG_RROS_TEST)]
 fn test_mem() {
     memory_test::mem_test();
 }

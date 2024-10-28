@@ -171,8 +171,10 @@ fn control_common_ioctl(_file: &File, _cmd: &mut IoctlCommand) -> Result<i32> {
 fn control_mmap(_file: &File, vma: &mut bindings::vm_area_struct) -> Result {
     let p = unsafe { RROS_SHARED_HEAP.membase };
     let pfn: usize = unsafe { rust_helper_pa(p as usize) } >> bindings::PAGE_SHIFT;
-    let len: usize = (vma.__bindgen_anon_1.__bindgen_anon_1.vm_end
-        - vma.__bindgen_anon_1.__bindgen_anon_1.vm_start) as usize;
+    let len: usize = unsafe {
+        (vma.__bindgen_anon_1.__bindgen_anon_1.vm_end
+            - vma.__bindgen_anon_1.__bindgen_anon_1.vm_start) as usize
+    };
 
     if len != unsafe { RROS_SHM_SIZE } {
         return Err(Error::EINVAL);
@@ -180,7 +182,7 @@ fn control_mmap(_file: &File, vma: &mut bindings::vm_area_struct) -> Result {
 
     remap_pfn_range(
         vma as *mut bindings::vm_area_struct,
-        vma.__bindgen_anon_1.__bindgen_anon_1.vm_start,
+        unsafe { vma.__bindgen_anon_1.__bindgen_anon_1.vm_start },
         pfn.try_into().unwrap(),
         len.try_into().unwrap(),
         PAGE_SHARED,

@@ -311,9 +311,11 @@ impl RrosStax {
             ib_flags = self.inband_wait.spin_lock_irqsave();
             oob_flags = self.oob_wait.lock.raw_spin_lock_irqsave();
 
-            if Task::current().signal_pending() {
-                ret = Err(Error::ERESTARTSYS);
-                break;
+            unsafe {
+                if Task::current().signal_pending() {
+                    ret = Err(Error::ERESTARTSYS);
+                    break;
+                }
             }
         }
 

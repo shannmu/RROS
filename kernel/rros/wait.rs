@@ -318,7 +318,9 @@ pub fn wait_test() {
     );
     runner.run(c_str!("test wait"));
     for _i in 0..10 {
-        bindings::usleep_range(10000, 20000);
+        unsafe {
+            bindings::usleep_range(10000, 20000);
+        }
         let flags = unsafe { (*ptr_queue).lock.raw_spin_lock_irqsave() };
         unsafe { (*flag_ptr).store(true, Relaxed) };
 

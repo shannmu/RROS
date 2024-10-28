@@ -849,9 +849,11 @@ pub fn rros_switch_oob() -> Result<usize> {
     // if (curr == NULL)
     // 	return -EPERM;
 
-    if Task::current().signal_pending() {
-        // pr_debug!("wrong!!!!!!!!!!!!!!!!!!!");
-        return Err(kernel::Error::ERESTARTSYS);
+    unsafe {
+        if Task::current().signal_pending() {
+            // pr_debug!("wrong!!!!!!!!!!!!!!!!!!!");
+            return Err(kernel::Error::ERESTARTSYS);
+        }
     }
 
     // let prio = kthread.thread.as_mut().unwrap().lock().cprio;
@@ -935,11 +937,12 @@ pub fn rros_switch_oob() -> Result<usize> {
     // 	raw_spin_unlock_irqrestore(&curr->rq->lock, flags);
     // }
 
-    if Task::current().signal_pending() {
-        // pr_debug!("wrong!!!!!!!!!!!!!!!!!!!");
-        return Err(kernel::Error::ERESTARTSYS);
+    unsafe {
+        if Task::current().signal_pending() {
+            // pr_debug!("wrong!!!!!!!!!!!!!!!!!!!");
+            return Err(kernel::Error::ERESTARTSYS);
+        }
     }
-
     // return 0;
     Ok(0)
 }

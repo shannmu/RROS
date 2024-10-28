@@ -374,9 +374,9 @@ fn do_oob_syscall(stage: IrqStage, regs: PtRegs) -> i32 {
     /* Syscall might have switched in-band, recheck. */
     if !rros_is_inband() {
         p = rros_current();
-        let res1 = Task::current().signal_pending();
+        let res1 = unsafe { Task::current().signal_pending() };
         let res2 = unsafe { (*(*curr).locked_data().get()).info & T_KICKED != 0 };
-        let res3 = (Task::current().state() & T_WEAK) != 0;
+        let res3 = unsafe { (Task::current().state() & T_WEAK) != 0 };
         // [TODO: lack covert atomic in bindings to atomic in rfl]
         let res4 = unsafe {
             (*(*curr).locked_data().get())
@@ -483,9 +483,9 @@ fn do_inband_syscall(_stage: IrqStage, regs: PtRegs) -> i32 {
 
     if !rros_is_inband() {
         p = rros_current();
-        let res1 = Task::current().signal_pending();
+        let res1 = unsafe { Task::current().signal_pending() };
         let res2 = unsafe { (*(*curr).locked_data().get()).info & T_KICKED != 0 };
-        let res3 = (Task::current().state() & T_WEAK) != 0;
+        let res3 = unsafe { (Task::current().state() & T_WEAK) != 0 };
         let res4 = unsafe {
             (*(*curr).locked_data().get())
                 .inband_disable_count
