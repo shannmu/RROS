@@ -19,7 +19,7 @@ fn untag(mut skb: RrosSkBuff, ehdr: &mut VlanEthhdr, mac_hdr: *mut u8) -> bool {
             vlan_tci: u16,
         );
     }
-    skb.protocol = ehdr.get().unwrap().h_vlan_encapsulated_proto;
+    skb.protocol(ehdr.get().unwrap().h_vlan_encapsulated_proto);
     unsafe {
         rust_helper__vlan_hwaccel_put_tag(
             skb.0.as_ptr(),
@@ -36,7 +36,7 @@ fn untag(mut skb: RrosSkBuff, ehdr: &mut VlanEthhdr, mac_hdr: *mut u8) -> bool {
             (mac_len - bindings::VLAN_HLEN as usize - bindings::ETH_TLEN as usize) as u64,
         );
     }
-    skb.mac_header += bindings::VLAN_HLEN as u16;
+    skb.mac_header(skb.get_mac_header() + bindings::VLAN_HLEN as u16);
     return pick(skb);
 }
 
@@ -67,9 +67,11 @@ pub fn rros_net_ether_accept(skb: RrosSkBuff) -> bool {
         return pick(skb);
     }
     // TODO: The following path has not been tested.
-    if skb.vlan_present() == 0 && unsafe { rust_helper_eth_type_vlan(be16::new(skb.protocol)) } {
+    if skb.get_vlan_present() == false
+        && unsafe { rust_helper_eth_type_vlan(be16::new(skb.get_be_protocol())) }
+    {
         pr_debug!("this path is not tested\n");
-        let mac_hdr = unsafe { skb.head.offset(skb.mac_header as isize) as *mut u8 };
+        let mac_hdr = unsafe { skb.head.offset(skb.get_mac_header() as isize) as *mut u8 };
         let ehdr = mac_hdr as *mut VlanEthhdr;
         pr_debug!("(*ehdr).h_vlan_encapsulated_proto {} ", unsafe {
             (*ehdr).get_mut().h_vlan_encapsulated_proto
@@ -97,7 +99,7 @@ fn net_ether_ingress(mut skb: RrosSkBuff) {
     if rros_net_packet_deliver(&mut skb) {
         return;
     }
-    let protocol = u16::from(be16::new(skb.protocol)) as u32;
+    let protocol = u16::from(be16::new(skb.get_be_protocol())) as u32;
     match protocol {
         bindings::ETH_P_IP => { /* TODO:Try UDP.. */ }
         _ => {}

@@ -281,9 +281,9 @@ impl RrosNetProto for EthernetRrosNetProto {
         }
         let mut skb = skb.unwrap();
         skb.reset_mac_header();
-        skb.protocol = sock.protocol.raw();
+        skb.protocol(sock.protocol.raw());
         skb.set_dev(real_dev.0.as_ptr());
-        skb.priority = unsafe { (*sock.sk).get_mut().sk_priority };
+        skb.priority(unsafe { (*sock.sk).get_mut().sk_priority });
         let skb_tailroom = unsafe { rust_helper_skb_tailroom(skb.0.as_ptr()) } as usize;
         let mut rem: usize = 0;
         let count = rros_import_iov(
@@ -308,11 +308,10 @@ impl RrosNetProto for EthernetRrosNetProto {
 
         skb.put(count as u32);
 
-        let skb_protocol = unsafe { be16::new(skb.0.as_ref().protocol) };
+        let skb_protocol = unsafe { be16::new(skb.get_be_protocol()) };
         if skb_protocol == be16::new(0) || skb_protocol == be16::from(bindings::ETH_P_ALL as u16) {
             unsafe {
-                skb.0.as_mut().protocol =
-                    rust_helper_dev_parse_header_protocol(skb.0.as_ptr()).raw();
+                skb.protocol(rust_helper_dev_parse_header_protocol(skb.0.as_ptr()).raw());
             }
         }
         unsafe {
@@ -465,11 +464,11 @@ fn copy_packet_to_user(
             return -(bindings::EINVAL as isize);
         }
         addr.get_mut().sll_family = bindings::AF_PACKET as u16;
-        addr.get_mut().sll_protocol = skb.protocol;
+        addr.get_mut().sll_protocol = skb.get_be_protocol();
         let dev = skb.dev().unwrap();
         addr.get_mut().sll_ifindex = dev.ifindex();
         addr.get_mut().sll_hatype = unsafe { dev.0.as_ref().type_ };
-        addr.get_mut().sll_pkttype = unsafe { skb.0.as_ref().pkt_type() };
+        addr.get_mut().sll_pkttype = unsafe { skb.get_pkt_type() };
         addr.get_mut().sll_halen = unsafe {
             rust_helper_dev_parse_header(
                 skb.0.as_ptr(),

@@ -152,6 +152,7 @@ impl RrosSkBuff {
                 skbuff::__netdev_alloc_oob_skb(
                     dev.0.as_mut(),
                     est.rstate.buf_size,
+                    bindings::VLAN_HLEN as usize,
                     bindings::GFP_KERNEL,
                 )
             };
@@ -417,6 +418,68 @@ impl RrosSkBuff {
             fn rust_helper_skb_reset_mac_header(skb: *mut bindings::sk_buff);
         }
         unsafe { rust_helper_skb_reset_mac_header(self.0.as_mut()) };
+    }
+}
+
+impl RrosSkBuff {
+    pub fn protocol(&mut self, protocol: u16) {
+        unsafe {
+            self.0.as_mut().__bindgen_anon_5.headers.as_mut().protocol = protocol;
+        }
+    }
+
+    pub fn mac_header(&mut self, mac_header: u16) {
+        unsafe {
+            self.0.as_mut().__bindgen_anon_5.headers.as_mut().mac_header = mac_header;
+        }
+    }
+
+    pub fn priority(&mut self, priority: u32) {
+        unsafe {
+            self.0.as_mut().__bindgen_anon_5.headers.as_mut().priority = priority;
+        }
+    }
+}
+
+impl RrosSkBuff {
+    pub fn get_be_protocol(&self) -> u16 {
+        unsafe { self.0.as_ref().__bindgen_anon_5.headers.as_ref().protocol }
+    }
+
+    pub fn get_mac_header(&self) -> u16 {
+        unsafe { self.0.as_ref().__bindgen_anon_5.headers.as_ref().mac_header }
+    }
+
+    pub fn get_priority(&self) -> u32 {
+        unsafe { self.0.as_ref().__bindgen_anon_5.headers.as_ref().priority }
+    }
+
+    pub fn get_pkt_type(&self) -> u8 {
+        unsafe { self.0.as_ref().__bindgen_anon_5.headers.as_ref().pkt_type() }
+    }
+
+    pub fn get_vlan_present(&self) -> bool {
+        unsafe {
+            self.0
+                .as_ref()
+                .__bindgen_anon_5
+                .headers
+                .as_ref()
+                .__bindgen_anon_2
+                .__bindgen_anon_1
+                .vlan_proto
+                != 0
+                || self
+                    .0
+                    .as_ref()
+                    .__bindgen_anon_5
+                    .headers
+                    .as_ref()
+                    .__bindgen_anon_2
+                    .__bindgen_anon_1
+                    .vlan_tci
+                    != 0
+        }
     }
 }
 

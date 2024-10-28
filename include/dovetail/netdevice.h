@@ -7,6 +7,7 @@
  * the out-of-band network stack.
  */
 struct oob_netdev_state {
+	void *wrapper;
 };
 
 #endif /* !_DOVETAIL_NETDEVICE_H */

@@ -114,7 +114,7 @@ fn netif_oob_deliver(skb: *mut bindings::sk_buff) -> bool {
         fn rust_helper_eth_type_vlan(eth_type: be16) -> bool;
     }
     let skb = RrosSkBuff::from_raw_ptr(skb);
-    let protocol: u32 = u16::from(be16::new(skb.protocol)).into();
+    let protocol: u32 = u16::from(be16::new(skb.get_be_protocol())).into();
     pr_debug!("protocol is {}", protocol);
     match protocol {
         bindings::ETH_P_IP => {
@@ -127,7 +127,7 @@ fn netif_oob_deliver(skb: *mut bindings::sk_buff) -> bool {
              * For those adapters without hw-accelerated VLAN
              * capabilities, check the ethertype directly.
              */
-            if unsafe { rust_helper_eth_type_vlan(be16::new(skb.protocol)) } {
+            if unsafe { rust_helper_eth_type_vlan(be16::new(skb.get_be_protocol())) } {
                 pr_debug!("true");
                 rros_net_ether_accept(skb)
             } else {
