@@ -1,5 +1,7 @@
 //! This file is the entry point of the rros kernel module.
 //! Importing necessary features and modules
+#![allow(unreachable_pub)]
+#![allow(invalid_reference_casting)]
 
 use kernel::{
     bindings, c_types, chrdev, cpumask::CpumaskT, dovetail, error, irqstage, percpu, prelude::*,
