@@ -12,10 +12,6 @@ use crate::{
 };
 use core::cell::UnsafeCell;
 
-extern "C" {
-    fn iov_iter_count(iter: *const bindings::iov_iter) -> usize;
-}
-
 /// Wraps the kernel's `struct iov_iter`.
 ///
 /// # Invariants
@@ -28,7 +24,7 @@ pub struct IovIter {
 impl IovIter {
     fn common_len(&self) -> usize {
         // SAFETY: `IovIter::ptr` is guaranteed to be valid by the type invariants.
-        unsafe { iov_iter_count(self.ptr) }
+        unsafe { bindings::iov_iter_count(self.ptr) }
     }
 
     /// Constructs a new [`struct iov_iter`] wrapper.

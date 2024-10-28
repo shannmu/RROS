@@ -1546,6 +1546,11 @@ int rust_helper_dev_queue_xmit(struct sk_buff *skb)
 }
 EXPORT_SYMBOL_GPL(rust_helper_dev_queue_xmit);
 
+size_t rust_helper_iov_iter_count(const struct iov_iter *i)
+{
+	return iov_iter_count(i);
+}
+
 // void rust_helper_anon_inode_getfile(const char *name,
 // 				const struct file_operations *fops,
 // 				void *priv, int flags) {
