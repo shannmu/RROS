@@ -9,7 +9,7 @@ use crate::{
     uapi::rros::thread::RROS_HMDIAG_SYSDEMOTE,
 };
 
-use kernel::sync::Arc;
+use alloc::sync::Arc;
 
 use core::{clone::Clone, ops::FnMut, ptr::NonNull, sync::atomic::AtomicBool};
 

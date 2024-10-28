@@ -1,5 +1,5 @@
 use alloc::rc::Rc;
-use kernel::sync::Arc;
+use alloc::sync::Arc;
 
 use crate::{
     clock::{rros_ktime_monotonic, RrosClock, RROS_MONO_CLOCK},

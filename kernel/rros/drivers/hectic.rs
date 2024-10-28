@@ -6,7 +6,7 @@ use core::{
     sync::atomic::{fence, Ordering},
 };
 
-use kernel::sync::Arc;
+use alloc::sync::Arc;
 
 use crate::{
     arch::arm64::fptest::{rros_begin_fpu, rros_detect_fpu},

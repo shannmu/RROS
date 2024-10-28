@@ -874,7 +874,7 @@ pub fn rros_get_xbuf(rfd: u32, rfilpp: &mut *mut RrosFile) -> Option<NonNull<Rro
     let rfilp = rros_get_file(rfd);
     match rfilp {
         Some(rfilp) => {
-            // unsafe{ (*rfilpp) = Arc::into_foreign(rfilp) as *mut RrosFile };
+            // unsafe{ (*rfilpp) = Arc::into_raw(rfilp) as *mut RrosFile };
             (*rfilpp) = rfilp.as_ptr();
             let fbind: *const RrosFileBinding =
                 unsafe { (*(*(*rfilpp)).filp).private_data as *const RrosFileBinding };

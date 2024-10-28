@@ -183,8 +183,8 @@ pub fn tp_init(rq: *mut rros_rq) -> Result<usize> {
                 .locked_data()
                 .get())
             .init()?;
-            // let pinned = Pin::new_unchecked(&mut *(Arc::into_foreign( temp[n as usize].runnable.head.as_mut().unwrap().head.value.clone()) as *mut SpinLock<RrosThread>));
-            // // &mut *Arc::into_foreign( *(*rq_ptr).root_thread.clone().as_mut().unwrap()) as &mut SpinLock<RrosThread>
+            // let pinned = Pin::new_unchecked(&mut *(Arc::into_raw( temp[n as usize].runnable.head.as_mut().unwrap().head.value.clone()) as *mut SpinLock<RrosThread>));
+            // // &mut *Arc::into_raw( *(*rq_ptr).root_thread.clone().as_mut().unwrap()) as &mut SpinLock<RrosThread>
             // spinlock_init!(pinned, "rros_threads");
         }
         tp.partitions = Some(temp);
@@ -446,7 +446,7 @@ pub fn tp_requeue(thread: Arc<SpinLock<RrosThread>>) {
 pub fn tp_pick(rq: Option<*mut rros_rq>) -> Result<Arc<SpinLock<RrosThread>>> {
     let rq = rq.unwrap();
     unsafe {
-        let timer = Arc::into_foreign((*rq).tp.tf_timer.as_mut().unwrap().clone())
+        let timer = Arc::into_raw((*rq).tp.tf_timer.as_mut().unwrap().clone())
             as *mut SpinLock<RrosTimer> as *mut RrosTimer;
         if rros_timer_is_running(timer) == false {
             return Err(kernel::Error::EINVAL);

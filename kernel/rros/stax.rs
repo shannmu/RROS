@@ -370,7 +370,7 @@ impl RrosStax {
         let curr: Arc<SpinLock<RrosThread>>;
         // Safety: rros_current() guarantees that the ptr is valid.
         unsafe {
-            curr = Arc::from_foreign(ptr);
+            curr = Arc::from_raw(ptr);
             Arc::increment_strong_count(ptr);
         }
         let mut old: u32;
