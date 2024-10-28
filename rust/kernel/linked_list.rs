@@ -4,8 +4,12 @@
 //!
 //! TODO: This module is a work in progress.
 
-use crate::{c_types::c_void, sync::Arc, types::ForeignOwnable};
+#[cfg(not(CONFIG_RROS))]
+use crate::sync::Arc;
+use crate::{c_types::c_void, types::ForeignOwnable};
 use alloc::boxed::Box;
+#[cfg(CONFIG_RROS)]
+use alloc::sync::Arc;
 use core::ptr::NonNull;
 
 pub use crate::raw_list::{Cursor, GetLinks, Links};
@@ -29,12 +33,24 @@ pub trait Wrapper<T: Sized> {
 }
 
 impl<T: Sized + 'static> Wrapper<T> for Box<T> {
+    #[cfg(CONFIG_RROS)]
+    fn into_pointer(self) -> NonNull<T> {
+        NonNull::new(Box::into_raw(self)).unwrap()
+    }
+
+    #[cfg(not(CONFIG_RROS))]
     fn into_pointer(self) -> NonNull<T> {
         NonNull::new(Box::into_foreign(self).cast_mut().cast::<T>()).unwrap()
     }
 
+    #[cfg(not(CONFIG_RROS))]
     unsafe fn from_pointer(ptr: NonNull<T>) -> Self {
         unsafe { Box::from_foreign(ptr.as_ptr().cast_const().cast::<c_void>()) }
+    }
+
+    #[cfg(CONFIG_RROS)]
+    unsafe fn from_pointer(ptr: NonNull<T>) -> Self {
+        unsafe { Box::from_raw(ptr.as_ptr()) }
     }
 
     fn as_ref(&self) -> &T {
@@ -43,12 +59,24 @@ impl<T: Sized + 'static> Wrapper<T> for Box<T> {
 }
 
 impl<T: Sized + 'static> Wrapper<T> for Arc<T> {
+    #[cfg(not(CONFIG_RROS))]
     fn into_pointer(self) -> NonNull<T> {
         NonNull::new(Arc::into_foreign(self).cast_mut().cast::<T>()).unwrap()
     }
 
+    #[cfg(CONFIG_RROS)]
+    fn into_pointer(self) -> NonNull<T> {
+        NonNull::new(Arc::into_raw(self) as _).unwrap()
+    }
+
+    #[cfg(not(CONFIG_RROS))]
     unsafe fn from_pointer(ptr: NonNull<T>) -> Self {
         unsafe { Arc::from_foreign(ptr.as_ptr().cast_const().cast::<c_void>()) }
+    }
+
+    #[cfg(CONFIG_RROS)]
+    unsafe fn from_pointer(ptr: NonNull<T>) -> Self {
+        unsafe { Arc::from_raw(ptr.as_ptr()) }
     }
 
     fn as_ref(&self) -> &T {
