@@ -195,6 +195,12 @@ impl ThisModule {
     pub const unsafe fn from_ptr(ptr: *mut bindings::module) -> ThisModule {
         ThisModule(ptr)
     }
+
+    /// Method `get_ptr` gets a pointer to the `module`.
+    #[cfg(CONFIG_RROS)]
+    pub const fn get_ptr(&self) -> *mut bindings::module {
+        self.0
+    }
 }
 
 #[cfg(not(any(testlib, test)))]
