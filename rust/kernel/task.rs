@@ -4,7 +4,7 @@
 //!
 //! C header: [`include/linux/sched.h`](../../../../include/linux/sched.h).
 
-use crate::{bindings, types::Opaque};
+use crate::{bindings, c_types, types::Opaque};
 use core::{marker::PhantomData, ops::Deref, ptr};
 
 /// Returns the currently running task.
@@ -144,6 +144,29 @@ impl Task {
         // And `wake_up_process` is safe to be called for any valid task, even if the task is
         // running.
         unsafe { bindings::wake_up_process(self.0.get()) };
+    }
+
+    /// The `current_ptr` function returns a raw pointer to the current task. It is unsafe and should be used with caution.
+    #[cfg(CONFIG_RROS)]
+    pub fn current_ptr() -> *mut bindings::task_struct {
+        unsafe { bindings::get_current() }
+    }
+
+    /// The `state` function returns the state of the given task as a u32. It is unsafe because it directly accesses the `state` field of the task struct.
+    #[cfg(CONFIG_RROS)]
+    pub fn state(&self) -> u32 {
+        unsafe { (*self.0.get()).__state as u32 }
+    }
+
+    /// The `task_cpu` function returns a CPU number of the provided `task_struct`.
+    #[cfg(CONFIG_RROS)]
+    pub fn task_cpu(ptr: *const bindings::task_struct) -> c_types::c_uint {
+        unsafe { bindings::task_cpu(ptr) }
+    }
+
+    /// Call `Linux` wake_up_process.
+    pub fn wake_up_process(ptr: *mut bindings::task_struct) -> i32 {
+        unsafe { bindings::wake_up_process(ptr) }
     }
 }
 
