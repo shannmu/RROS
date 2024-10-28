@@ -34,6 +34,6 @@ pub fn rros_net_ether_transmit(dev: &mut NetDevice, skb: &mut RrosSkBuff) -> i32
     if ret.is_ok() {
         return 0;
     } else {
-        return ret.err().unwrap().to_kernel_errno();
+        return ret.err().unwrap().to_errno();
     }
 }

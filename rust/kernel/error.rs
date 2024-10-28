@@ -11,6 +11,7 @@ use alloc::{
     collections::TryReserveError,
 };
 
+use core::cell::BorrowMutError;
 use core::convert::From;
 use core::fmt;
 use core::num::TryFromIntError;
@@ -315,6 +316,12 @@ impl From<LayoutError> for Error {
 impl From<core::fmt::Error> for Error {
     fn from(_: core::fmt::Error) -> Error {
         code::EINVAL
+    }
+}
+
+impl From<BorrowMutError> for Error {
+    fn from(_: BorrowMutError) -> Error {
+        Error::EBUSY
     }
 }
 

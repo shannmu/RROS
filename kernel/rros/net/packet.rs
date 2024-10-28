@@ -269,7 +269,7 @@ impl RrosNetProto for EthernetRrosNetProto {
 
         let dev = find_xmit_device(sock, msghdr);
         if dev.is_err() {
-            return -(dev.err().unwrap().to_kernel_errno() as isize);
+            return -(dev.err().unwrap().to_errno() as isize);
         }
         let mut dev = dev.unwrap();
         let mut real_dev = dev.vlan_dev_real_dev();
