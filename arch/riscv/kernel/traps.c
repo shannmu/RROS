@@ -397,26 +397,20 @@ asmlinkage __visible noinstr void do_page_fault(struct pt_regs *regs)
 }
 #endif
 
-#ifdef CONFIG_IRQ_PIPELINE
-static void noinstr handle_riscv_irq(struct pt_regs *regs)
-{
-	struct pt_regs *old_regs = set_irq_regs(regs);
-
-	handle_irq_pipelined(regs);
-	set_irq_regs(old_regs);
-}
-#else
 static void noinstr handle_riscv_irq(struct pt_regs *regs)
 {
 	struct pt_regs *old_regs;
 
-	irq_enter_rcu();
-	old_regs = set_irq_regs(regs);
-	handle_arch_irq(regs);
-	set_irq_regs(old_regs);
-	irq_exit_rcu();
+	if (irqs_pipelined()) {
+		handle_irq_pipelined(regs);
+	} else {
+		irq_enter_rcu();
+		old_regs = set_irq_regs(regs);
+		handle_arch_irq(regs);
+		set_irq_regs(old_regs);
+		irq_exit_rcu();
+	}
 }
-#endif
 
 extern void (*handle_arch_irq)(struct pt_regs *);
 
