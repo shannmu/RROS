@@ -53,10 +53,6 @@ static inline void fault_exit(unsigned long flags)
 {
 	WARN_ON_ONCE(irq_pipeline_debug() && hard_irqs_disabled());
 
-	/*
-	 * We expect kentry_exit_pipelined() to clear the stall bit if
-	 * kentry_enter_pipelined() observed it that way.
-	 */
 	hard_local_irq_restore(flags);
 }
 

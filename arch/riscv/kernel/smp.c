@@ -52,7 +52,7 @@ void __init smp_setup_processor_id(void)
 	cpuid_to_hartid_map(0) = boot_cpu_hartid;
 }
 
-//static DEFINE_PER_CPU_READ_MOSTLY(int, ipi_dummy_dev);
+static DEFINE_PER_CPU_READ_MOSTLY(int, ipi_dummy_dev);
 int ipi_virq_base __ro_after_init;
 static int nr_ipi __ro_after_init = IPI_MAX;
 static struct irq_desc *ipi_desc[IPI_MAX] __read_mostly;
@@ -101,66 +101,6 @@ static inline void ipi_cpu_crash_stop(unsigned int cpu, struct pt_regs *regs)
 }
 #endif
 
-#ifdef CONFIG_IRQ_PIPELINE
-
-static DEFINE_PER_CPU(unsigned long, ipi_messages);
-
-static DEFINE_PER_CPU(unsigned int [IPI_MAX], ipi_counts);
-
-void irq_send_oob_ipi(unsigned int irq,
-		const struct cpumask *cpumask)
-{
-	unsigned int sgi = irq - ipi_virq_base;
-
-	if (WARN_ON(irq_pipeline_debug() &&
-		    (sgi < OOB_IPI_OFFSET ||
-		     sgi >= OOB_IPI_OFFSET + OOB_NR_IPI)))
-		return;
-
-	__ipi_send_mask(ipi_desc[sgi], cpumask);
-}
-EXPORT_SYMBOL_GPL(irq_send_oob_ipi);
-
-static void send_ipi_mask(const struct cpumask *mask, enum ipi_message_type op)
-{
-	unsigned int cpu;
-
-	for_each_cpu(cpu, mask)
-		set_bit(op, &per_cpu(ipi_messages, cpu));
-
-	wmb();
-	__ipi_send_mask(ipi_desc[0], mask);
-}
-
-static void send_ipi_single(int cpu, enum ipi_message_type op)
-{
-	set_bit(op, &per_cpu(ipi_messages, cpu));
-
-	wmb();
-	__ipi_send_mask(ipi_desc[0], cpumask_of(cpu));
-}
-
-#else /* !CONFIG_IRQ_PIPELINE */
-
-static void send_ipi_mask(const struct cpumask *mask, enum ipi_message_type op)
-{
-	__ipi_send_mask(ipi_desc[op], mask);
-}
-
-static void send_ipi_single(int cpu, enum ipi_message_type op)
-{
-	__ipi_send_mask(ipi_desc[op], cpumask_of(cpu));
-}
-
-#endif /* !CONFIG_IRQ_PIPELINE */
-
-#ifdef CONFIG_IRQ_WORK
-void arch_irq_work_raise(void)
-{
-	send_ipi_single(smp_processor_id(), IPI_IRQ_WORK);
-}
-#endif
-
 static irqreturn_t handle_IPI(int irq, void *data)
 {
 	unsigned int cpu = smp_processor_id();
@@ -203,6 +143,43 @@ static irqreturn_t handle_IPI(int irq, void *data)
 
 #ifdef CONFIG_IRQ_PIPELINE
 
+static DEFINE_PER_CPU(unsigned long, ipi_messages);
+
+static DEFINE_PER_CPU(unsigned int [IPI_MAX], ipi_counts);
+
+void irq_send_oob_ipi(unsigned int irq,
+		const struct cpumask *cpumask)
+{
+	unsigned int sgi = irq - ipi_virq_base;
+
+	if (WARN_ON(irq_pipeline_debug() &&
+		    (sgi < OOB_IPI_OFFSET ||
+		     sgi >= OOB_IPI_OFFSET + OOB_NR_IPI)))
+		return;
+
+	__ipi_send_mask(ipi_desc[sgi], cpumask);
+}
+EXPORT_SYMBOL_GPL(irq_send_oob_ipi);
+
+static void send_ipi_mask(const struct cpumask *mask, enum ipi_message_type op)
+{
+	unsigned int cpu;
+
+	for_each_cpu(cpu, mask)
+		set_bit(op, &per_cpu(ipi_messages, cpu));
+
+	wmb();
+	__ipi_send_mask(ipi_desc[0], mask);
+}
+
+static void send_ipi_single(int cpu, enum ipi_message_type op)
+{
+	set_bit(op, &per_cpu(ipi_messages, cpu));
+
+	wmb();
+	__ipi_send_mask(ipi_desc[0], cpumask_of(cpu));
+}
+
 static irqreturn_t ipi_handler(int irq, void *data)
 {
 	unsigned long *pmsg;
@@ -219,7 +196,32 @@ static irqreturn_t ipi_handler(int irq, void *data)
 	return IRQ_HANDLED;
 }
 
+#else /* !CONFIG_IRQ_PIPELINE */
+
+static void send_ipi_mask(const struct cpumask *mask, enum ipi_message_type op)
+{
+	__ipi_send_mask(ipi_desc[op], mask);
+}
+
+static void send_ipi_single(int cpu, enum ipi_message_type op)
+{
+	__ipi_send_mask(ipi_desc[op], cpumask_of(cpu));
+}
+
+static irqreturn_t ipi_handler(int irq, void *data)
+{
+	handle_IPI(irq, data);
+	return IRQ_HANDLED;
+}
+
 #endif /* !CONFIG_IRQ_PIPELINE */
+
+#ifdef CONFIG_IRQ_WORK
+void arch_irq_work_raise(void)
+{
+	send_ipi_single(smp_processor_id(), IPI_IRQ_WORK);
+}
+#endif
 
 void riscv_ipi_enable(void)
 {
@@ -250,19 +252,18 @@ bool riscv_ipi_have_virq_range(void)
 
 void riscv_ipi_set_virq_range(int virq, int nr)
 {
-	int i, inband_nr_ipi;
+	int i, err, inband_nr_ipi;
 
 	if (WARN_ON(ipi_virq_base))
 		return;
 
 	WARN_ON(nr < IPI_MAX);
-
 	nr_ipi = min(nr, IPI_MAX);
 
 	/*
-	 * irq_pipeline: the in-band stage traps SGI0 only,
-	 * over which IPI messages are mutiplexed. Other SGIs
-	 * are available for exchanging out-of-band IPIs.
+	 * irq_pipeline: the in-band stage traps a single IPI, over
+	 * which all IPI messages are mutiplexed. Other IPIs are
+	 * available for exchanging out-of-band IPIs.
 	 */
 	inband_nr_ipi = irqs_pipelined() ? 1 : nr_ipi;
 
@@ -270,13 +271,16 @@ void riscv_ipi_set_virq_range(int virq, int nr)
 
 	/* Request IPIs */
 	for (i = 0; i < nr_ipi; i++) {
-		if (i < inband_nr_ipi) {
+		if (!irqs_pipelined()) {
+			err = request_percpu_irq(ipi_virq_base + i, handle_IPI,
+						"IPI", &ipi_dummy_dev);
+		} else if (i < inband_nr_ipi) {
 			int err;
 
 			err = request_percpu_irq(ipi_virq_base + i, ipi_handler,
 						 "IPI", &irq_stat);
-			WARN_ON(err);
 		}
+		WARN_ON(err);
 
 		ipi_desc[i] = irq_to_desc(ipi_virq_base + i);
 		irq_set_status_flags(ipi_virq_base + i, IRQ_HIDDEN);

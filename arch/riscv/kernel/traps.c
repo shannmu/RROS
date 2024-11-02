@@ -369,7 +369,6 @@ void do_trap_ecall_u(struct pt_regs *regs)
 		 * The resulting 6 bits of entropy is seen in SP[9:4].
 		 */
 		choose_random_kstack_offset(get_random_u16());
-done:
 		syscall_exit_to_user_mode(regs);
 	} else {
 		irqentry_state_t state = irqentry_nmi_enter(regs);

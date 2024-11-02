@@ -67,12 +67,6 @@ static inline notrace unsigned long arch_local_save_flags(void)
 	return arch_irqs_virtual_to_native_flags(stalled);
 }
 
-/* test hardware interrupt enable bit */
-static inline int arch_irqs_disabled(void)
-{
-	return arch_irqs_disabled_flags(arch_local_save_flags());
-}
-
 static inline notrace unsigned long arch_local_irq_save(void)
 {
 	int stalled = inband_irq_save();
@@ -127,6 +121,14 @@ static inline int arch_irqs_disabled_flags(unsigned long flags)
 }
 
 #endif /* !CONFIG_IRQ_PIPELINE */
+
+/* test hardware interrupt enable bit */
+static inline int arch_irqs_disabled(void)
+{
+	return arch_irqs_disabled_flags(arch_local_save_flags());
+}
+
+struct pt_regs;
 
 extern void (*handle_arch_irq)(struct pt_regs *);
 
