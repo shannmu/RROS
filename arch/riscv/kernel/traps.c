@@ -114,6 +114,12 @@ void die(struct pt_regs *regs, const char *str)
 static __always_inline
 bool mark_trap_entry(int signo, struct pt_regs *regs)
 {
+	/*
+	 * Dovetail: irqentry_enter*() already synchronized the
+	 * virtual and real interrupt states for us. If running
+	 * in-band, we may re-enable hard irqs to allow oob events in
+	 * while we perform the regular trap handling.
+	 */
 	if (likely(running_inband())) {
 		hard_cond_local_irq_enable();
 		return true;
@@ -158,6 +164,12 @@ static void do_trap_error(struct pt_regs *regs, int signo, int code,
 	if (user_mode(regs)) {
 		do_trap(regs, signo, code, addr);
 	} else {
+		/*
+		 * Dovetail: If we trapped from kernel space, either
+		 * we can fix up the situation, or we can't and we may
+		 * happily crash with hard irqs off. Either way, don't
+		 * bother.
+		 */
 		if (!fixup_exception(regs))
 			die(regs, str);
 	}
@@ -369,6 +381,7 @@ void do_trap_ecall_u(struct pt_regs *regs)
 		 * The resulting 6 bits of entropy is seen in SP[9:4].
 		 */
 		choose_random_kstack_offset(get_random_u16());
+
 		syscall_exit_to_user_mode(regs);
 	} else {
 		irqentry_state_t state = irqentry_nmi_enter(regs);
