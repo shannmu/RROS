@@ -54,6 +54,7 @@ struct thread_info {
 	unsigned long		flags;		/* low level flags */
 #ifdef CONFIG_IRQ_PIPELINE
 	__u32			local_flags;	/* local (synchronous) flags */
+#define ti_local_flags(__ti)    ((__ti)->local_flags)
 #endif  
 	int                     preempt_count;  /* 0=>preemptible, <0=>BUG */
 	/*
@@ -97,8 +98,6 @@ struct thread_info {
 	.preempt_count	= INIT_PREEMPT_COUNT,	\
 	INIT_SCS				\
 }
-
-#define ti_local_flags(__ti)    ((__ti)->local_flags)
 
 void arch_release_task_struct(struct task_struct *tsk);
 int arch_dup_task_struct(struct task_struct *dst, struct task_struct *src);
