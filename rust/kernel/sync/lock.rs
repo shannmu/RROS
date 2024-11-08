@@ -77,7 +77,7 @@ pub unsafe trait Backend {
 ///
 /// Exposes one of the kernel locking primitives. Which one is exposed depends on the lock
 /// [`Backend`] specified as the generic parameter `B`.
-#[cfg(not(CONFIG_RROS))]
+#[cfg(not(CONFIG_RROS_SPINLOCK))]
 #[pin_data]
 pub struct Lock<T: ?Sized, B: Backend> {
     /// The kernel lock object.
@@ -95,15 +95,15 @@ pub struct Lock<T: ?Sized, B: Backend> {
 }
 
 // SAFETY: `Lock` can be transferred across thread boundaries iff the data it protects can.
-#[cfg(not(CONFIG_RROS))]
+#[cfg(not(CONFIG_RROS_SPINLOCK))]
 unsafe impl<T: ?Sized + Send, B: Backend> Send for Lock<T, B> {}
 
 // SAFETY: `Lock` serialises the interior mutability it provides, so it is `Sync` as long as the
 // data it protects is `Send`.
-#[cfg(not(CONFIG_RROS))]
+#[cfg(not(CONFIG_RROS_SPINLOCK))]
 unsafe impl<T: ?Sized + Send, B: Backend> Sync for Lock<T, B> {}
 
-#[cfg(not(CONFIG_RROS))]
+#[cfg(not(CONFIG_RROS_SPINLOCK))]
 impl<T, B: Backend> Lock<T, B> {
     /// Constructs a new lock initialiser.
     #[allow(clippy::new_ret_no_self)]
@@ -120,7 +120,7 @@ impl<T, B: Backend> Lock<T, B> {
     }
 }
 
-#[cfg(not(CONFIG_RROS))]
+#[cfg(not(CONFIG_RROS_SPINLOCK))]
 impl<T: ?Sized, B: Backend> Lock<T, B> {
     /// Acquires the lock and gives the caller access to the data protected by it.
     pub fn lock(&self) -> Guard<'_, T, B> {
@@ -137,7 +137,7 @@ impl<T: ?Sized, B: Backend> Lock<T, B> {
 /// Allows mutual exclusion primitives that implement the [`Backend`] trait to automatically unlock
 /// when a guard goes out of scope. It also provides a safe and convenient way to access the data
 /// protected by the lock.
-#[cfg(not(CONFIG_RROS))]
+#[cfg(not(CONFIG_RROS_SPINLOCK))]
 #[must_use = "the lock unlocks immediately when the guard is unused"]
 pub struct Guard<'a, T: ?Sized, B: Backend> {
     pub(crate) lock: &'a Lock<T, B>,
@@ -146,10 +146,10 @@ pub struct Guard<'a, T: ?Sized, B: Backend> {
 }
 
 // SAFETY: `Guard` is sync when the data protected by the lock is also sync.
-#[cfg(not(CONFIG_RROS))]
+#[cfg(not(CONFIG_RROS_SPINLOCK))]
 unsafe impl<T: Sync + ?Sized, B: Backend> Sync for Guard<'_, T, B> {}
 
-#[cfg(not(CONFIG_RROS))]
+#[cfg(not(CONFIG_RROS_SPINLOCK))]
 impl<T: ?Sized, B: Backend> Guard<'_, T, B> {
     pub(crate) fn do_unlocked(&mut self, cb: impl FnOnce()) {
         // SAFETY: The caller owns the lock, so it is safe to unlock it.
@@ -163,7 +163,7 @@ impl<T: ?Sized, B: Backend> Guard<'_, T, B> {
     }
 }
 
-#[cfg(not(CONFIG_RROS))]
+#[cfg(not(CONFIG_RROS_SPINLOCK))]
 impl<T: ?Sized, B: Backend> core::ops::Deref for Guard<'_, T, B> {
     type Target = T;
 
@@ -173,7 +173,7 @@ impl<T: ?Sized, B: Backend> core::ops::Deref for Guard<'_, T, B> {
     }
 }
 
-#[cfg(not(CONFIG_RROS))]
+#[cfg(not(CONFIG_RROS_SPINLOCK))]
 impl<T: ?Sized, B: Backend> core::ops::DerefMut for Guard<'_, T, B> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         // SAFETY: The caller owns the lock, so it is safe to deref the protected data.
@@ -181,7 +181,7 @@ impl<T: ?Sized, B: Backend> core::ops::DerefMut for Guard<'_, T, B> {
     }
 }
 
-#[cfg(not(CONFIG_RROS))]
+#[cfg(not(CONFIG_RROS_SPINLOCK))]
 impl<T: ?Sized, B: Backend> Drop for Guard<'_, T, B> {
     fn drop(&mut self) {
         // SAFETY: The caller owns the lock, so it is safe to unlock it.
@@ -189,7 +189,7 @@ impl<T: ?Sized, B: Backend> Drop for Guard<'_, T, B> {
     }
 }
 
-#[cfg(not(CONFIG_RROS))]
+#[cfg(not(CONFIG_RROS_SPINLOCK))]
 impl<'a, T: ?Sized, B: Backend> Guard<'a, T, B> {
     /// Constructs a new immutable lock guard.
     ///
@@ -247,7 +247,7 @@ pub trait NeedsLockClass {
 }
 
 /// Reschedules the caller's task if needed.
-#[cfg(CONFIG_RROS)]
+#[cfg(CONFIG_RROS_SPINLOCK)]
 pub fn cond_resched() -> bool {
     // SAFETY: No arguments, reschedules `current` if needed.
     unsafe { rust_helper_cond_resched() != 0 }

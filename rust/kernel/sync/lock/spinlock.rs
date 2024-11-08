@@ -23,7 +23,7 @@ use crate::str::CStr;
 ///
 /// It uses the name if one is given, otherwise it generates one based on the file name and line
 /// number.
-#[cfg(not(CONFIG_RROS))]
+#[cfg(not(CONFIG_RROS_SPINLOCK))]
 #[macro_export]
 macro_rules! new_spinlock {
     ($inner:expr $(, $name:literal)? $(,)?) => {
@@ -97,7 +97,7 @@ macro_rules! new_spinlock {
 /// ```
 ///
 /// [`spinlock_t`]: ../../../../include/linux/spinlock.h
-#[cfg(not(CONFIG_RROS))]
+#[cfg(not(CONFIG_RROS_SPINLOCK))]
 pub type SpinLock<T> = super::Lock<T, SpinLockBackend>;
 
 /// A kernel `spinlock_t` lock backend.
@@ -176,7 +176,7 @@ macro_rules! spinlock_init {
 /// handlers (in which case it is ok for interrupts to be enabled).
 ///
 /// [`spinlock_t`]: ../../../include/linux/spinlock.h
-#[cfg(CONFIG_RROS)]
+#[cfg(CONFIG_RROS_SPINLOCK)]
 pub struct SpinLock<T: ?Sized> {
     spin_lock: Opaque<bindings::spinlock>,
 
@@ -188,15 +188,15 @@ pub struct SpinLock<T: ?Sized> {
 }
 
 // SAFETY: `SpinLock` can be transferred across thread boundaries iff the data it protects can.
-#[cfg(CONFIG_RROS)]
+#[cfg(CONFIG_RROS_SPINLOCK)]
 unsafe impl<T: ?Sized + Send> Send for SpinLock<T> {}
 
 // SAFETY: `SpinLock` serialises the interior mutability it provides, so it is `Sync` as long as the
 // data it protects is `Send`.
-#[cfg(CONFIG_RROS)]
+#[cfg(CONFIG_RROS_SPINLOCK)]
 unsafe impl<T: ?Sized + Send> Sync for SpinLock<T> {}
 
-#[cfg(CONFIG_RROS)]
+#[cfg(CONFIG_RROS_SPINLOCK)]
 impl<T> SpinLock<T> {
     /// Constructs a new spinlock.
     ///
@@ -212,7 +212,7 @@ impl<T> SpinLock<T> {
     }
 }
 
-#[cfg(CONFIG_RROS)]
+#[cfg(CONFIG_RROS_SPINLOCK)]
 impl<T: ?Sized> SpinLock<T> {
     /// Locks the spinlock and gives the caller access to the data protected by it. Only one thread
     /// at a time is allowed to access the protected data.
@@ -277,7 +277,7 @@ impl<T: ?Sized> SpinLock<T> {
     }
 }
 
-#[cfg(CONFIG_RROS)]
+#[cfg(CONFIG_RROS_SPINLOCK)]
 impl<T: ?Sized> NeedsLockClass for SpinLock<T> {
     unsafe fn init(self: Pin<&mut Self>, name: &'static CStr, key: *mut bindings::lock_class_key) {
         // SAFETY: The caller guarantees that `name` and `key` are initialised. So the pointers are valid.
@@ -285,7 +285,7 @@ impl<T: ?Sized> NeedsLockClass for SpinLock<T> {
     }
 }
 
-#[cfg(CONFIG_RROS)]
+#[cfg(CONFIG_RROS_SPINLOCK)]
 impl<T: ?Sized> Lock for SpinLock<T> {
     type Inner = T;
 
