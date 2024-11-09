@@ -43,7 +43,7 @@ use kernel::{
     ktime::{self, timespec64_to_ktime, Timespec64},
     linked_list::{GetLinks, Links, List},
     prelude::*,
-    rbtree, spinlock_init,
+    rbtree, new_spinlock,
     str::CStr,
     sync::Lock,
     sync::SpinLock,
@@ -1123,28 +1123,30 @@ impl FileOperations for PollOps {
     }
 }
 
-pub static mut RROS_POLL_FACTORY: SpinLock<factory::RrosFactory> = unsafe {
-    SpinLock::new(factory::RrosFactory {
-        name: CStr::from_bytes_with_nul_unchecked("poll\0".as_bytes()),
-        // fops: Some(&Pollops),
-        nrdev: 0,
-        build: None,
-        dispose: None,
-        attrs: None,
-        flags: factory::RrosFactoryType::SINGLE,
-        inside: Some(factory::RrosFactoryInside {
-            type_: DeviceType::new(),
-            class: None,
-            cdev: None,
-            device: None,
-            sub_rdev: None,
-            kuid: None,
-            kgid: None,
-            minor_map: None,
-            index: None,
-            name_hash: None,
-            hash_lock: None,
-            register: None,
-        }),
-    })
+pub static mut RROS_POLL_FACTORY: Pin<Box<SpinLock<factory::RrosFactory>>> = unsafe {
+    Box::pin_init(
+        new_spinlock!(factory::RrosFactory {
+            name: CStr::from_bytes_with_nul_unchecked("poll\0".as_bytes()),
+            // fops: Some(&Pollops),
+            nrdev: 0,
+            build: None,
+            dispose: None,
+            attrs: None,
+            flags: factory::RrosFactoryType::SINGLE,
+            inside: Some(factory::RrosFactoryInside {
+                type_: DeviceType::new(),
+                class: None,
+                cdev: None,
+                device: None,
+                sub_rdev: None,
+                kuid: None,
+                kgid: None,
+                minor_map: None,
+                index: None,
+                name_hash: None,
+                hash_lock: None,
+                register: None,
+            }),
+        })
+    ).unwrap()
 };
