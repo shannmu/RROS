@@ -67,7 +67,7 @@ pub const RROS_POLIOC_WAIT: u32 = kernel::ioctl::_IOWR::<(i64, i64, i64)>(RROS_P
 pub struct RrosPollGroup {
     pub item_index: rbtree::RBTree<u32, Arc<RrosPollItem>>,
     pub item_list: List<Arc<RrosPollItem>>,
-    pub waiter_list: SpinLock<List<Arc<RrosPollWaiter>>>,
+    pub waiter_list: Pin<Box<SpinLock<List<Arc<RrosPollWaiter>>>>>,
     pub rfile: RrosFile,
     // pub item_lock: mutex::RrosKMutex,
     pub nr_items: i32,
@@ -79,7 +79,7 @@ impl RrosPollGroup {
         Self {
             item_index: rbtree::RBTree::new(),
             item_list: List::new(),
-            waiter_list: unsafe { SpinLock::new(List::new()) },
+            waiter_list: Box::pin_init(new_spinlock!(List::new(),"RrosPollGroup::waiter_list")),
             rfile: RrosFile::new(),
             // item_lock: mutex::RrosKMutex::new(),
             nr_items: 0,
@@ -88,8 +88,8 @@ impl RrosPollGroup {
     }
 
     pub fn init(&mut self) {
-        let pinned = unsafe { Pin::new_unchecked(&mut self.waiter_list) };
-        spinlock_init!(pinned, "RrosPollGroup::waiter_list");
+        // let pinned = unsafe { Pin::new_unchecked(&mut self.waiter_list) };
+        // spinlock_init!(pinned, "RrosPollGroup::waiter_list");
         //FIXME: init kmutex fail
         // rros_init_kmutex(&mut item_lock as *mut RrosKMutex);
     }
