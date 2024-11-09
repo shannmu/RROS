@@ -25,7 +25,7 @@ use kernel::{
     prelude::*,
     premmpt::running_inband,
     rbtree::RBTree,
-    spinlock_init,
+    new_spinlock,
     str::CStr,
     sync::{HardSpinlock, Lock, SpinLock},
     task,
@@ -954,8 +954,9 @@ pub fn observable_factory_dispose(_ele: RrosElement) {
     pr_debug!("[observable] observable_factory_dispose");
 }
 
-pub static mut RROS_OBSERVABLE_FACTORY: SpinLock<factory::RrosFactory> = unsafe {
-    SpinLock::new(RrosFactory {
+pub static mut RROS_OBSERVABLE_FACTORY: Pin<Box<SpinLock<factory::RrosFactory>>> = unsafe {
+    Box::pin_init(
+        new_spinlock!(RrosFactory {
         name: CStr::from_bytes_with_nul_unchecked("observable\0".as_bytes()),
         nrdev: CONFIG_RROS_NR_OBSERVABLE + CONFIG_RROS_NR_THREADS,
         build: Some(observable_factory_build),
@@ -977,4 +978,5 @@ pub static mut RROS_OBSERVABLE_FACTORY: SpinLock<factory::RrosFactory> = unsafe 
             register: None,
         }),
     })
+).unwrap()
 };
