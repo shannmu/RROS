@@ -16,33 +16,38 @@ use kernel::{
     prelude::*,
     str::CStr,
     sync::SpinLock,
+    new_spinlock,
 };
 
 pub const CONFIG_RROS_NR_CONTROL: usize = 0;
 
-pub static mut RROS_CONTROL_FACTORY: SpinLock<RrosFactory> = unsafe {
-    SpinLock::new(RrosFactory {
-        name: CStr::from_bytes_with_nul_unchecked("control\0".as_bytes()),
-        nrdev: CONFIG_RROS_NR_CONTROL,
-        build: None,
-        dispose: None,
-        attrs: None,
-        flags: crate::factory::RrosFactoryType::SINGLE,
-        inside: Some(RrosFactoryInside {
-            type_: DeviceType::new(),
-            class: None,
-            cdev: None,
-            device: None,
-            sub_rdev: None,
-            kuid: None,
-            kgid: None,
-            minor_map: None,
-            index: None,
-            name_hash: None,
-            hash_lock: None,
-            register: None,
-        }),
-    })
+pub static mut RROS_CONTROL_FACTORY: Pin<Box<SpinLock<RrosFactory>>> = unsafe {
+    Box::pin_init(
+        new_spinlock!(
+            RrosFactory {
+                name: CStr::from_bytes_with_nul_unchecked("control\0".as_bytes()),
+                nrdev: CONFIG_RROS_NR_CONTROL,
+                build: None,
+                dispose: None,
+                attrs: None,
+                flags: crate::factory::RrosFactoryType::SINGLE,
+                inside: Some(RrosFactoryInside {
+                    type_: DeviceType::new(),
+                    class: None,
+                    cdev: None,
+                    device: None,
+                    sub_rdev: None,
+                    kuid: None,
+                    kgid: None,
+                    minor_map: None,
+                    index: None,
+                    name_hash: None,
+                    hash_lock: None,
+                    register: None,
+                }),
+            }
+        )
+    ).unwrap()
 };
 
 pub struct ControlOps;
