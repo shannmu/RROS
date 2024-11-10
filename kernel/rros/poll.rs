@@ -155,22 +155,22 @@ impl RrosPollWaiter {
 }
 
 pub struct RrosPollHead {
-    pub watchpoints: SpinLock<list_head>,
+    pub watchpoints: Pin<Box<SpinLock<list_head>>>,
 }
 
 impl RrosPollHead {
     pub fn new() -> Self {
         Self {
-            watchpoints: unsafe { SpinLock::new(list_head::default()) },
+            watchpoints:  Box::pin_init(new_spinlock!(list_head::default(),"RrosPollHead")).unwrap() ,
         }
     }
 
     pub fn init(&mut self) {
         init_list_head!(self.watchpoints.locked_data().get());
-        spinlock_init!(
-            unsafe { Pin::new_unchecked(&mut self.watchpoints) },
-            "RrosPollHead"
-        );
+        // spinlock_init!(
+        //     unsafe { Pin::new_unchecked(&mut self.watchpoints) },
+        //     "RrosPollHead"
+        // );
     }
 }
 pub struct RrosPollConnector {
