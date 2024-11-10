@@ -41,7 +41,7 @@ use kernel::{
     prelude::*,
     premmpt,
     sched::sched_setscheduler,
-    spinlock_init,
+    new_spinlock,
     str::CStr,
     sync::{Guard, Lock, SpinLock},
     task::{self, Task},
@@ -152,8 +152,9 @@ pub const RROS_THRIOC_GET_STATE: u32 = 4;
 // TODO: move this to the config file
 pub const CONFIG_RROS_NR_THREADS: usize = 16;
 
-pub static mut RROS_THREAD_FACTORY: SpinLock<factory::RrosFactory> = unsafe {
-    SpinLock::new(factory::RrosFactory {
+pub static mut RROS_THREAD_FACTORY: Pin<Box<SpinLock<factory::RrosFactory>>> = unsafe {
+    Box::pin_init(new_spinlock!
+        (factory::RrosFactory {
         // TODO: move this and clock factory name to a variable
         name: CStr::from_bytes_with_nul_unchecked("thread\0".as_bytes()),
         // fops: Some(&ThreadOps),
@@ -181,6 +182,7 @@ pub static mut RROS_THREAD_FACTORY: SpinLock<factory::RrosFactory> = unsafe {
             register: None,
         }),
     })
+).unwrap()
 };
 
 #[derive(Default)]
