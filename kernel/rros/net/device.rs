@@ -37,9 +37,10 @@ struct ListThreadSafeWrapper(pub List<Box<NetDevice>>);
 unsafe impl Sync for ListThreadSafeWrapper {}
 unsafe impl Send for ListThreadSafeWrapper {}
 
-init_static_sync! {
-    static ACTIVE_PORT_LIST : SpinLock<ListThreadSafeWrapper> = ListThreadSafeWrapper(List::new());
-}
+// init_static_sync! {
+//     static ACTIVE_PORT_LIST : SpinLock<ListThreadSafeWrapper> = ListThreadSafeWrapper(List::new());
+// }
+static ACTIVE_PORT_LIST : Pin<Box<SpinLock<ListThreadSafeWrapper>>> = Box::pin_init(new_spinlock!(ListThreadSafeWrapper(List::new()))).unwrap();
 
 pub fn start_handler_thread(
     func: Box<dyn FnOnce()>,
