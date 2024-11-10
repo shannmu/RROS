@@ -80,18 +80,18 @@ impl RrosNotice {
 unsafe impl ReadableFromBytes for RrosNotice {}
 
 pub struct RrosSubscriber {
-    pub subscriptions: SpinLock<RBTree<u32, Arc<RrosObserver>>>,
+    pub subscriptions: Pin<Box<SpinLock<RBTree<u32, Arc<RrosObserver>>>>>,
 }
 
 impl RrosSubscriber {
     pub fn new_and_init() -> Self {
         let mut s = Self {
-            subscriptions: unsafe { SpinLock::new(RBTree::new()) },
+            subscriptions: Box::pin_init(new_spinlock!(RBTree::new(),"RrosSubscriber")).unwrap() ,
         };
-        spinlock_init!(
-            unsafe { Pin::new_unchecked(&mut s.subscriptions) },
-            "RrosSubscriber"
-        );
+        // spinlock_init!(
+        //     unsafe { Pin::new_unchecked(&mut s.subscriptions) },
+        //     "RrosSubscriber"
+        // );
         s
     }
 }
