@@ -22,6 +22,7 @@ use core::sync::atomic::{AtomicU8, Ordering};
 mod trace;
 
 mod control;
+mod guard;
 mod idle;
 mod poll;
 mod queue;

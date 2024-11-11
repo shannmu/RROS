@@ -1,12 +1,11 @@
 use core::{
-    borrow::{Borrow, BorrowMut},
+    borrow::BorrowMut,
     cell::RefCell,
     clone::Clone,
     convert::{AsMut, AsRef},
     default::Default,
-    mem::size_of,
-    mem::MaybeUninit,
-    ops::{Deref, DerefMut, Drop},
+    mem::{size_of, MaybeUninit},
+    ops::{Deref, DerefMut},
     option::Option::{None, Some},
     ptr::NonNull,
     result::Result::Ok,
@@ -34,15 +33,17 @@ use kernel::{
 use crate::{
     clock::{rros_get_clock_by_fd, RrosClock},
     factory::{
-        self, CloneData, FundleT, RrosElement, RrosElementIds, RrosFactory,
-        __rros_get_element_by_fundle, rros_get_index, rros_index_factory_element, RrosFactoryType,
+        self, rros_get_element_by_fundle, rros_get_index, rros_index_factory_element,
+        rros_unindex_factory_element, CloneData, FundleT, RrosElement, RrosElementIds, RrosFactory,
+        RrosFactoryType,
     },
     fifo::RROS_FIFO_MAX_PRIO,
     file::{rros_get_file, rros_put_file, RrosFile, RrosFileBinding},
     mutex::{
         atomic_cmpxchg, atomic_dec_return, atomic_inc, atomic_inc_return, atomic_read, atomic_set,
-        RrosMutex, __rros_unlock_mutex, rros_commit_mutex_ceiling, rros_init_mutex_pi,
-        rros_init_mutex_pp, rros_lock_mutex_timeout, rros_trylock_mutex, RROS_NO_HANDLE,
+        RrosMutex, __rros_unlock_mutex, rros_commit_mutex_ceiling, rros_destroy_mutex,
+        rros_init_mutex_pi, rros_init_mutex_pp, rros_lock_mutex_timeout, rros_trylock_mutex,
+        RROS_NO_HANDLE,
     },
     sched::{rros_schedule, RrosThread, RrosThreadWithLock, RrosTimeSpec},
     thread::{rros_current, rros_init_user_element, T_SIGNAL},
@@ -292,8 +293,12 @@ fn get_monitor_element_by_fundle(
 ) -> *mut RrosMonitor {
     let map = unsafe { &mut *(fac.locked_data().get()) };
     let map = map.inside.as_mut().unwrap().index.as_mut().unwrap();
-    let e = factory::__rros_get_element_by_fundle(map, fundle);
-    unsafe { (*e).pointer as *mut RrosMonitor }
+    let e = factory::rros_get_element_by_fundle(map, fundle).unwrap();
+    let e = e.deref();
+    let mut e = e.borrow_mut();
+    let e = e.deref_mut();
+
+    (*e).pointer as *mut RrosMonitor
 }
 
 pub fn rros_is_mutex_owner(fastlock: *mut bindings::atomic_t, ownerh: FundleT) -> bool {
@@ -310,9 +315,13 @@ pub fn __rros_commit_monitor_ceiling() {
     let map = unsafe { &mut *RROS_MONITOR_FACTORY.locked_data().get() };
     let map = map.inside.as_mut().unwrap().index.as_mut().unwrap();
 
-    let e = __rros_get_element_by_fundle(map, curr_ref.u_window.as_ref().unwrap().pp_pending);
+    let e =
+        rros_get_element_by_fundle(map, curr_ref.u_window.as_ref().unwrap().pp_pending).unwrap();
+    let e = e.deref();
+    let mut e = e.borrow_mut();
+    let e = e.deref_mut();
 
-    let gate = unsafe { (*e).pointer as *mut RrosMonitor };
+    let gate = (*e).pointer as *mut RrosMonitor;
     if gate.is_null() {
         curr_ref.u_window.as_mut().unwrap().pp_pending = RROS_NO_HANDLE;
         return;
@@ -824,14 +833,14 @@ fn monitor_factory_dispose(ele: factory::RrosElement) {
                 .borrow_mut()
                 .deref_mut()
                 .wait_queue
-                .destory();
-            if (event_core
+                .destroy();
+            if event_core
                 .deref()
                 .inner
                 .borrow_mut()
                 .deref_mut()
                 .gate
-                .is_some())
+                .is_some()
             {
                 let (mut gate, _) = get_monitor_by_fd(
                     event_core
@@ -1133,7 +1142,7 @@ fn wait_monitor(
         panic!("invalid RrosMonitorCore value");
     };
 
-    flags = { raw_spin_lock_irqsave(&mut gate_core_ref.lock as *mut bindings::hard_spinlock_t) };
+    flags = raw_spin_lock_irqsave(&mut gate_core_ref.lock as *mut bindings::hard_spinlock_t);
     event_core
         .deref()
         .inner

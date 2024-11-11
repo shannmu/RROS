@@ -904,7 +904,7 @@ pub fn observable_factory_build(
     uname: &'static CStr,
     _u_attrs: Option<*mut u8>,
     clone_flags: i32,
-    _state_offp: &u32,
+    _state_offp: &mut u32,
 ) -> Rc<RefCell<RrosElement>> {
     pr_debug!("[observable] observable_factory_build: start");
     // in case failed

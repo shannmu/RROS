@@ -1,11 +1,5 @@
 use core::{
-    cell::RefCell,
-    clone::Clone,
-    convert::TryInto,
-    default::Default,
-    mem::size_of,
-    ops::{Deref, DerefMut},
-    ptr,
+    cell::RefCell, clone::Clone, convert::TryInto, default::Default, mem::size_of, ptr,
     result::Result::Ok,
 };
 
@@ -14,11 +8,10 @@ use crate::{
 };
 
 use alloc::rc::Rc;
-use bindings::{rb_erase, rb_insert_color};
 use kernel::{
     bindings,
     bitmap::{self, bitmap_zalloc},
-    c_str, c_types, chrdev, class, container_of, device,
+    c_str, c_types, chrdev, class, device,
     device::DeviceType,
     file::{self, fd_install, File},
     file_operations::{FileOpener, FileOperations, IoctlCommand},
@@ -26,7 +19,7 @@ use kernel::{
     io_buffer::IoBufferWriter,
     irq_work, kernelh,
     prelude::*,
-    spinlock_init,
+    rbtree, spinlock_init,
     str::CStr,
     sync::{Lock, SpinLock},
     sysfs, types,
@@ -1407,7 +1400,7 @@ pub fn ioctl_clone_device(file: &File, _cmd: u32, arg: usize) -> Result<usize> {
                 cstr_u_name,
                 Some(u_attrs),
                 real_req.clone_flags.try_into().unwrap(),
-                &state_offset,
+                &mut state_offset,
             )
         }
     } else {
@@ -1523,6 +1516,10 @@ pub fn rros_element_name(e: &RrosElement) -> *const c_types::c_char {
         return e.devname.as_ref().unwrap().get_name();
     }
     0 as *const c_types::c_char
+}
+
+pub fn rros_get_index(handle: FundleT) -> FundleT {
+    return handle & !RROS_HANDLE_INDEX_MASK;
 }
 
 #[allow(dead_code)]

@@ -1,9 +1,7 @@
 use crate::{
     clock::{self, rros_read_clock},
-    factory::{self, rros_index_factory_element},
-    factory::{self, rros_init_element, RrosElement, RrosFactory},
+    factory::{self, rros_index_factory_element, rros_init_element, RrosElement, RrosFactory},
     fifo::{self, RROS_FIFO_MAX_PRIO, RROS_FIFO_MIN_PRIO, RROS_SCHED_FIFO},
-    fifo::{self, RROS_SCHED_FIFO},
     file::RrosFileBinding,
     idle, lock,
     sched::*,
@@ -21,7 +19,6 @@ use core::{
     cell::RefCell,
     clone::Clone,
     mem::size_of,
-    ops::DerefMut,
     ops::{Deref, DerefMut},
     ptr::{self, null_mut},
     result::Result::{Err, Ok},
@@ -40,6 +37,7 @@ use kernel::{
     file_operations::FileOperations,
     fs,
     io_buffer::IoBufferWriter,
+    io_buffer::{IoBufferReader, ReadableFromBytes, WritableToBytes},
     ioctl::{_IO, _IOR, _IOW, _IOWR},
     irq_work::IrqWork,
     kernelh, ktime,
@@ -53,6 +51,8 @@ use kernel::{
     task::{self, Task},
     types,
 };
+
+use kernel::{linked_list::List, memory_rros::RROS_SHARED_HEAP, user_ptr::UserSlicePtr};
 
 extern "C" {
     fn rust_helper_kthread_run(
@@ -1669,16 +1669,6 @@ fn uninit_thread(thread: Arc<SpinLock<RrosThread>>) {
     // let name = thread.lock().name as *const c_types::c_void;
     // bindings::kfree(name);
 }
-
-use crate::factory::{rros_init_element, RrosElement, RrosFactory};
-use core::ptr;
-use kernel::{
-    error::Error,
-    io_buffer::{IoBufferReader, ReadableFromBytes, WritableToBytes},
-    linked_list::List,
-    memory_rros::RROS_SHARED_HEAP,
-    user_ptr::UserSlicePtr,
-};
 
 pub static mut UTHREAD: Option<Arc<SpinLock<RrosThread>>> = None;
 
