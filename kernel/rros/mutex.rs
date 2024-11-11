@@ -440,9 +440,9 @@ pub fn untrack_owner(mutex: *mut RrosMutex) {
 
         // assert_hard_lock(&mutex->lock);
         if prev.is_some() {
-            let flags = lock::raw_spin_lock_irqsave();
+            let flags = lock::hard_local_irq_save();
             // (*(*mutex).next_tracker).remove();
-            lock::raw_spin_unlock_irqrestore(flags);
+            lock::hard_local_irq_restore(flags);
             // evl_put_element(&prev->element);
             (*mutex).owner = None;
         }
@@ -456,7 +456,7 @@ pub fn track_owner(mutex: *mut RrosMutex, owner: Arc<SpinLock<RrosThread>>) {
         // if (EVL_WARN_ON_ONCE(CORE, prev == owner))
         // 	return;
 
-        let flags = lock::raw_spin_lock_irqsave();
+        let flags = lock::hard_local_irq_save();
         if prev.is_some() {
             // TODO:
             // (*(*mutex).next_tracker).remove();
@@ -465,7 +465,7 @@ pub fn track_owner(mutex: *mut RrosMutex, owner: Arc<SpinLock<RrosThread>>) {
         }
 
         // TODO: ((*((*owner).locked_data().get())).trackers).add_head((*((*mutex).next_tracker)).value.clone());
-        lock::raw_spin_unlock_irqrestore(flags);
+        lock::hard_local_irq_restore(flags);
         (*mutex).owner = Some(owner.clone());
     }
 }
@@ -514,10 +514,10 @@ pub fn set_current_owner_locked(mutex: *mut RrosMutex, owner: Arc<SpinLock<RrosT
 
 pub fn set_current_owner(mutex: *mut RrosMutex, owner: Arc<SpinLock<RrosThread>>) -> Result<usize> {
     pr_info!("00000000000000000000000000000000000000");
-    let flags = lock::raw_spin_lock_irqsave();
+    let flags = lock::hard_local_irq_save();
     pr_info!("000000000000000.............555000000000000000000000.50.50.5");
     set_current_owner_locked(mutex, owner.clone());
-    lock::raw_spin_unlock_irqrestore(flags);
+    lock::hard_local_irq_restore(flags);
     pr_info!("99999999999999999999999999999999999999");
     Ok(0)
 }
@@ -598,7 +598,7 @@ pub fn rros_detect_boost_drop() {
         let mut _waiter = 0 as *mut RrosThread;
         let _mutex = 0 as *mut RrosMutex;
 
-        let flags = lock::raw_spin_lock_irqsave();
+        let flags = lock::hard_local_irq_save();
 
         let boosters = &mut (*curr).boosters;
         let mut cursor = boosters.cursor_front_mut();
@@ -625,7 +625,7 @@ pub fn rros_detect_boost_drop() {
             raw_spin_unlock(&mut (*entry).deref_mut().lock as *mut bindings::hard_spinlock_t);
         }
 
-        lock::raw_spin_unlock_irqrestore(flags);
+        lock::hard_local_irq_restore(flags);
     }
 }
 
@@ -686,18 +686,18 @@ pub fn flush_mutex_locked(mutex: *mut RrosMutex, reason: u32) -> Result<usize> {
 #[allow(dead_code)]
 pub fn rros_flush_mutex(mutex: *mut RrosMutex, reason: u32) {
     // trace_evl_mutex_flush(mutex);
-    let flags = lock::raw_spin_lock_irqsave();
+    let flags = lock::hard_local_irq_save();
     flush_mutex_locked(mutex, reason).unwrap();
-    lock::raw_spin_unlock_irqrestore(flags);
+    lock::hard_local_irq_restore(flags);
 }
 
 #[allow(dead_code)]
 pub fn rros_destroy_mutex(mutex: *mut RrosMutex) {
     // trace_evl_mutex_destroy(mutex);
-    let flags = lock::raw_spin_lock_irqsave();
+    let flags = lock::hard_local_irq_save();
     untrack_owner(mutex);
     flush_mutex_locked(mutex, T_RMID).unwrap();
-    lock::raw_spin_unlock_irqrestore(flags);
+    lock::hard_local_irq_restore(flags);
 }
 
 pub fn rros_trylock_mutex(mutex: *mut RrosMutex) -> Result<i32> {
@@ -748,7 +748,7 @@ pub fn wait_mutex_schedule(mutex: *mut RrosMutex) -> Result<i32> {
     }
 
     if info & (T_TIMEO | T_BREAK) != 0 {
-        let flags = lock::raw_spin_lock_irqsave();
+        let flags = lock::hard_local_irq_save();
         let wait_next = unsafe { RrosThreadWithLock::new_from_curr_thread() };
         unsafe {
             (*mutex).wchan.wait_list.remove(&wait_next);
@@ -760,13 +760,13 @@ pub fn wait_mutex_schedule(mutex: *mut RrosMutex) -> Result<i32> {
             ret = Err(kernel::Error::EINTR);
         }
 
-        lock::raw_spin_unlock_irqrestore(flags);
+        lock::hard_local_irq_restore(flags);
     }
     // } else if (IS_ENABLED(CONFIG_EVL_DEBUG_CORE)) {
     // 	bool empty;
-    // 	// raw_spin_lock_irqsave(&mutex->lock, flags);
+    // 	// hard_local_irq_save(&mutex->lock, flags);
     // 	empty = list_empty(&curr->wait_next);
-    // 	// raw_spin_unlock_irqrestore(&mutex->lock, flags);
+    // 	// hard_local_irq_restore(&mutex->lock, flags);
     // 	// EVL_WARN_ON_ONCE(CORE, !empty);
     // }
 
@@ -914,7 +914,7 @@ pub fn rros_lock_mutex_timeout(
 
             ret = Ok(0);
             let mut test_no_owner = 0; // goto test_no_owner
-            let mut flags = lock::raw_spin_lock_irqsave();
+            let mut flags = lock::hard_local_irq_save();
             let curr_lock = &mut (*curr.locked_data().get()).lock;
 
             curr_lock.raw_spin_lock();
@@ -936,7 +936,7 @@ pub fn rros_lock_mutex_timeout(
                 // test_no_owner
                 if oldh == RROS_NO_HANDLE {
                     curr_lock.raw_spin_unlock();
-                    lock::raw_spin_unlock_irqrestore(flags);
+                    lock::hard_local_irq_restore(flags);
                     redo = 1;
                     break;
                 }
@@ -959,15 +959,19 @@ pub fn rros_lock_mutex_timeout(
                 .as_mut()
                 .unwrap();
             let fundle = rros_get_index(h);
-            let owner_ptr = __rros_get_element_by_fundle(_map, fundle);
-            let owner_ptr = (*owner_ptr).pointer as *mut SpinLock<RrosThread>;
+            let e = rros_get_element_by_fundle(_map, fundle).unwrap();
+            let e = e.deref();
+            let mut e = e.borrow_mut();
+            let e = e.deref_mut();
+
+            let owner_ptr = (*e).pointer as *mut SpinLock<RrosThread>;
             owner = Arc::from_raw(owner_ptr);
             Arc::increment_strong_count(owner_ptr as *const SpinLock<RrosThread>);
             let owner_ptr = (*owner_ptr).locked_data().get();
             if owner_ptr.is_null() {
                 untrack_owner(mutex);
                 curr_lock.raw_spin_unlock();
-                lock::raw_spin_unlock_irqrestore(flags);
+                lock::hard_local_irq_restore(flags);
                 return Err(kernel::Error::EOWNERDEAD);
             }
 
@@ -1009,7 +1013,7 @@ pub fn rros_lock_mutex_timeout(
                     // lockp here 7
                     atomic_set(lockp, get_owner_handle(currh, mutex) as i32);
                     curr_lock.raw_spin_unlock();
-                    lock::raw_spin_unlock_irqrestore(flags);
+                    lock::hard_local_irq_restore(flags);
                     return ret;
                 }
 
@@ -1145,9 +1149,9 @@ pub fn rros_lock_mutex_timeout(
                 .unwrap();
                 curr_rq_lock.raw_spin_unlock();
                 curr_lock.raw_spin_unlock();
-                lock::raw_spin_unlock_irqrestore(flags);
+                lock::hard_local_irq_restore(flags);
                 ret = wait_mutex_schedule(mutex);
-                flags = lock::raw_spin_lock_irqsave();
+                flags = lock::hard_local_irq_save();
             } else {
                 curr_lock.raw_spin_unlock();
             }
@@ -1162,7 +1166,7 @@ pub fn rros_lock_mutex_timeout(
             if ret != Ok(0) {
                 curr_rq_lock.raw_spin_unlock();
                 curr_lock.raw_spin_unlock();
-                lock::raw_spin_unlock_irqrestore(flags);
+                lock::hard_local_irq_restore(flags);
                 return ret;
             }
             let info = (*curr.locked_data().get()).info;
@@ -1174,11 +1178,11 @@ pub fn rros_lock_mutex_timeout(
                         != 0
                 {
                     curr_lock.raw_spin_unlock();
-                    lock::raw_spin_unlock_irqrestore(flags);
+                    lock::hard_local_irq_restore(flags);
                     continue;
                 }
                 curr_lock.raw_spin_unlock();
-                lock::raw_spin_unlock_irqrestore(flags);
+                lock::hard_local_irq_restore(flags);
                 return Err(kernel::Error::ETIMEDOUT);
             }
             curr_rq_lock.raw_spin_unlock();
@@ -1192,7 +1196,7 @@ pub fn rros_lock_mutex_timeout(
             atomic_set(lockp, get_owner_handle(currh, mutex) as i32);
 
             curr_lock.raw_spin_unlock();
-            lock::raw_spin_unlock_irqrestore(flags);
+            lock::hard_local_irq_restore(flags);
             return ret;
         } // goto redo
     } // unsafe
@@ -1272,7 +1276,7 @@ pub fn __rros_unlock_mutex(mutex: *mut RrosMutex) -> Result<i32> {
 
     currh = unsafe { (*(curr.locked_data().get())).element.borrow().fundle };
 
-    let flags = lock::raw_spin_lock_irqsave();
+    let flags = lock::hard_local_irq_save();
     let lock = unsafe { &mut (*curr.locked_data().get()).lock };
     lock.raw_spin_lock();
 
@@ -1296,7 +1300,7 @@ pub fn __rros_unlock_mutex(mutex: *mut RrosMutex) -> Result<i32> {
         untrack_owner(mutex);
     }
     lock.raw_spin_unlock();
-    lock::raw_spin_unlock_irqrestore(flags);
+    lock::hard_local_irq_restore(flags);
     Ok(0)
 }
 
@@ -1331,25 +1335,25 @@ pub fn rros_unlock_mutex(mutex: *mut RrosMutex) -> Result<usize> {
 //         let flags: u32 = 0;
 //         let mut h: FundleT = 0;
 
-//         let mut flags = lock::raw_spin_lock_irqsave();
+//         let mut flags = lock::hard_local_irq_save();
 
 //         while (*curr).trackers.is_empty() == false {
 //             mutex = Arc::into_raw((*(*(*curr).trackers).get_head().unwrap()).value.clone())
 //                 as *mut SpinLock<RrosMutex> as *mut RrosMutex;
-//             lock::raw_spin_unlock_irqrestore(flags);
+//             lock::hard_local_irq_restore(flags);
 //             h = rros_get_index(atomic_read((*mutex).fastlock) as FundleT);
 //             // if (h == fundle_of(curr)) {
 //             // 	__rros_unlock_mutex(mutex);
 //             // } else {
-//             // 	// raw_spin_lock_irqsave(&mutex->lock, flags);
+//             // 	// hard_local_irq_save(&mutex->lock, flags);
 //             // 	if (*mutex).owner == curr{
 //             // 		untrack_owner(mutex);
 //             // 	}
-//             // 	// raw_spin_unlock_irqrestore(&mutex->lock, flags);
+//             // 	// hard_local_irq_restore(&mutex->lock, flags);
 //             // }
-//             flags = lock::raw_spin_lock_irqsave();
+//             flags = lock::hard_local_irq_save();
 //         }
-//         lock::raw_spin_unlock_irqrestore(flags);
+//         lock::hard_local_irq_restore(flags);
 //     }
 // }
 
@@ -1546,7 +1550,7 @@ pub fn rros_commit_mutex_ceiling(mutex: *mut RrosMutex) -> Result<i32> {
         let mut oldh: i32;
         let mut h: i32;
 
-        let flags = lock::raw_spin_lock_irqsave();
+        let flags = lock::hard_local_irq_save();
 
         // if (!rros_is_mutex_owner(lockp, fundle_of(curr)) ||(mutex->flags & EVL_MUTEX_CEILING))
         // 	goto out;
@@ -1558,7 +1562,7 @@ pub fn rros_commit_mutex_ceiling(mutex: *mut RrosMutex) -> Result<i32> {
             .fundle;
         if !rros_is_mutex_owner(lockp, fundle) || ((*mutex).flags & RROS_MUTEX_CEILING as i32) != 0
         {
-            lock::raw_spin_unlock_irqrestore(flags);
+            lock::hard_local_irq_restore(flags);
             return Ok(0);
         }
 
@@ -1575,7 +1579,7 @@ pub fn rros_commit_mutex_ceiling(mutex: *mut RrosMutex) -> Result<i32> {
             }
         }
         // out:
-        lock::raw_spin_unlock_irqrestore(flags);
+        lock::hard_local_irq_restore(flags);
         Ok(0)
     }
 }
