@@ -20,7 +20,7 @@ use kernel::{
     prelude::*,
     sock::Sock,
     socket::Sockaddr,
-    spinlock_init, static_init_net_proto_family,
+    new_spinlock, static_init_net_proto_family,
     sync::{Mutex, SpinLock},
     types::HlistNode,
     vmalloc::{c_kzalloc, c_kzfree},

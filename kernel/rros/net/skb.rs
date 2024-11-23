@@ -21,7 +21,12 @@ use kernel::{
     pr_debug, skbuff,
     sync::{Lock, SpinLock},
     Result,
+    new_spinlock,
 };
+use core::pin::Pin;
+use alloc::boxed::Box;
+use kernel::init::InPlaceInit;
+use core::cell::OnceCell;
 
 struct CloneControl {
     pub(crate) queue: bindings::list_head,

@@ -1,6 +1,6 @@
 use crate::{clock::*, timer::*};
 
-use kernel::{ktime::*, prelude::*, spinlock_init, sync::SpinLock};
+use kernel::{ktime::*, prelude::*, new_spinlock, sync::SpinLock};
 
 #[allow(dead_code)]
 pub fn test_do_clock_tick() -> Result<usize> {

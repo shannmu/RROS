@@ -2,6 +2,7 @@
 use crate::{clock::*, lock::*, sched::*, stat::*, tick::*, timeout::*};
 
 use core::ops::DerefMut;
+use core::ops::Deref;
 use kernel::{
     bindings, c_str, double_linked_list::*, ktime::*, percpu_defs, prelude::*, spinlock_init,
     str::CStr, sync::Lock, sync::SpinLock,

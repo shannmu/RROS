@@ -7,6 +7,7 @@ use core::{
     mem::{align_of, size_of, transmute},
     ops::DerefMut,
     ptr::{null, null_mut, NonNull},
+    ops::Deref,
 };
 
 #[warn(unused_mut)]
@@ -22,7 +23,7 @@ use kernel::{
     percpu::alloc_per_cpu,
     percpu_defs,
     prelude::*,
-    premmpt, spinlock_init,
+    premmpt, new_spinlock,
     str::{kstrdup, CStr},
     sync::{HardSpinlock, Lock, SpinLock},
     types::Atomic,

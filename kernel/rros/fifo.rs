@@ -5,6 +5,7 @@ use kernel::{
     prelude::*,
     sync::{Lock, SpinLock},
 };
+use core::ops::Deref;
 
 pub static mut RROS_SCHED_FIFO: sched::RrosSchedClass = sched::RrosSchedClass {
     sched_init: Some(rros_fifo_init),

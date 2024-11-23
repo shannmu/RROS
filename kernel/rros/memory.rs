@@ -3,7 +3,7 @@ use core::{mem::size_of, mem::zeroed};
 use kernel::{
     mm,
     prelude::*,
-    premmpt, rbtree, spinlock_init,
+    premmpt, rbtree, new_spinlock,
     sync::{self, SpinLock},
     vmalloc,
 };
@@ -76,7 +76,7 @@ impl RrosHeap {
             usable_size: 0,
             used_size: 0,
             buckets: [0; RROS_HEAP_MAX_BUCKETS as usize],
-            lock: unsafe { sync::SpinLock::<i32>::new(0) },
+            lock: unsafe { Box::pin_init(new_spinlock!(0)).unwrap() },
             next: list::ListHead::default(),
         })
     }

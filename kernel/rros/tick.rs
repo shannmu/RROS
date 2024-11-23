@@ -20,6 +20,7 @@ use core::{
     cmp,
     mem::{align_of, size_of},
     ptr::null_mut,
+    ops::Deref,
 };
 
 extern "C" {

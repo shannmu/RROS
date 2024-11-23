@@ -3,13 +3,14 @@ use kernel::{
     prelude::*,
     sync::{Lock, SpinLock},
 };
+use core::ops::Deref;
 
 pub static mut RROS_SCHED_IDLE: sched::RrosSchedClass = sched::RrosSchedClass {
-    sched_pick: Some(rros_idle_pick),
-    sched_setparam: Some(rros_idle_setparam),
-    sched_getparam: Some(rros_idle_getparam),
-    sched_trackprio: Some(rros_idle_trackprio),
-    sched_ceilprio: Some(rros_idle_ceilprio),
+    sched_pick: Some(rros_idle_pick as fn(Option<*mut sched::rros_rq>) -> Result<Arc<Pin<Box<SpinLock<sched::RrosThread>>>>>),
+    sched_setparam: Some(rros_idle_setparam as fn(Option<Arc<Pin<Box<SpinLock<sched::RrosThread>>>>>, Option<Arc<Pin<Box<SpinLock<sched::RrosSchedParam>>>>>) -> Result<usize>),
+    sched_getparam: Some(rros_idle_getparam as fn(Option<Arc<Pin<Box<SpinLock<sched::RrosThread>>>>>, Option<Arc<Pin<Box<SpinLock<sched::RrosSchedParam>>>>>) -> ()),
+    sched_trackprio: Some(rros_idle_trackprio as fn(Option<Arc<Pin<Box<SpinLock<sched::RrosThread>>>>>, Option<Arc<Pin<Box<SpinLock<sched::RrosSchedParam>>>>>) -> ()),
+    sched_ceilprio: Some(rros_idle_ceilprio as fn(Arc<Pin<Box<SpinLock<sched::RrosThread>>>>, i32) -> ()),
     weight: 0 * sched::RROS_CLASS_WEIGHT_FACTOR,
     policy: sched::SCHED_IDLE,
     name: "idle",

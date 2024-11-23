@@ -12,7 +12,9 @@ use crate::{
     thread::{rros_init_user_element, CONFIG_RROS_NR_THREADS},
     wait::{RrosWaitQueue, RROS_WAIT_PRIO},
 };
-use core::{cell::RefCell, default::Default, mem::size_of};
+use core::{cell::RefCell, default::Default, mem::size_of,ops::Deref};
+use core::cell::OnceCell;
+
 use kernel::{
     c_types, device,
     dovetail::{self, DovetailSubscriber},

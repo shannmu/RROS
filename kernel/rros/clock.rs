@@ -20,6 +20,8 @@ use crate::{
     RROS_OOB_CPUS,
 };
 
+use core::cell::OnceCell;
+
 use alloc::rc::Rc;
 
 use core::{
@@ -46,7 +48,7 @@ use kernel::{
     ktime::*,
     percpu,
     prelude::*,
-    premmpt, spinlock_init,
+    premmpt, new_spinlock,
     str::CStr,
     sync::{Lock, SpinLock},
     sysfs,

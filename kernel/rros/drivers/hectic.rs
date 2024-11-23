@@ -30,7 +30,7 @@ use kernel::{
     ktime::KtimeT,
     mutex_init,
     prelude::*,
-    spinlock_init,
+    new_spinlock,
     str::CStr,
     sync::{Lock, Mutex, Semaphore, SpinLock},
     task::Task,

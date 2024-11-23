@@ -9,16 +9,21 @@ use kernel::{
     spinlock_init,
     sync::{Lock, SpinLock},
     vmalloc, Result,
+    new_spinlock,
 };
 
 use super::{skb::RrosSkbQueue, socket::RrosNetdevActivation};
 use crate::{
     crossing::RrosCrossing,
     flags::RrosFlag,
-    net::{input::rros_net_do_rx, skb::rros_net_dev_build_pool},
+    net::{input::rros_net_do_rx, skb::{rros_net_dev_build_pool, RrosSkbQueueInner}},
     thread::KthreadRunner,
     wait::RrosWaitQueue,
 };
+use core::pin::Pin;
+use alloc::boxed::Box;
+use kernel::init::InPlaceInit;
+use core::cell::OnceCell;
 
 const IFF_OOB_PORT: usize = 1 << 1;
 const IFF_OOB_CAPABLE: usize = 1 << 0;

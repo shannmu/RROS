@@ -6,6 +6,8 @@ use core::{
     ptr::{self, NonNull},
 };
 
+use core::cell::OnceCell;
+
 use crate::{
     crossing::{
         rros_down_crossing, rros_init_crossing, rros_pass_crossing, rros_up_crossing, RrosCrossing,

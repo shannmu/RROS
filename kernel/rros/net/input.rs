@@ -9,11 +9,12 @@ use kernel::{
     c_types::c_void,
     endian::be16,
     prelude::*,
-    spinlock_init,
+    new_spinlock,
     sync::{Lock, SpinLock},
     types::HlistNode,
     vmalloc,
 };
+use core::ops::Deref;
 
 // pub struct RROSNetHandler{
 //     ingress : fn(skb : *mut bindings::sk_buff),

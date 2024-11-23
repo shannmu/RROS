@@ -31,7 +31,10 @@ use kernel::{
     user_ptr::{UserSlicePtrReader, UserSlicePtrWriter},
     vmalloc::c_kzalloc,
     waitqueue,
+    new_spinlock,
 };
+
+use core::cell::OnceCell;
 
 #[derive(Default)]
 pub struct XbufOps;

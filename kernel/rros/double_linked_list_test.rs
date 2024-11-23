@@ -1,5 +1,5 @@
 use crate::{clock::*, timer::*};
-use kernel::{prelude::*, spinlock_init, sync::SpinLock};
+use kernel::{prelude::*, new_spinlock, sync::SpinLock};
 
 #[allow(dead_code)]
 pub fn test_enqueue_by_index() -> Result<usize> {

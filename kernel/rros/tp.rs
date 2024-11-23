@@ -7,10 +7,11 @@ use kernel::{
     ktime::{ktime_to_timespec64, timespec64_to_ktime, Timespec64},
     memory_rros::*,
     prelude::*,
-    spinlock_init,
+    new_spinlock,
     sync::{Lock, SpinLock},
     types::Atomic,
 };
+use core::ops::Deref;
 
 pub static mut RROS_SCHED_TP: RrosSchedClass = RrosSchedClass {
     sched_init: Some(tp_init),

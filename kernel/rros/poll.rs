@@ -5,6 +5,7 @@ use core::{
     ops::DerefMut,
     ptr::NonNull,
     usize,
+    ops::Deref
 };
 
 use crate::{

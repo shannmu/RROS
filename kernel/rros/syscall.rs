@@ -1,4 +1,5 @@
 use core::mem::size_of;
+use core::ops::Deref;
 
 use kernel::{
     bindings,

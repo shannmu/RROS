@@ -1,8 +1,11 @@
 use core::{
     cell::RefCell, clone::Clone, convert::TryInto, default::Default, mem::size_of, ptr,
     result::Result::Ok,
+    ops::Deref,
 };
 
+
+use core::cell::OnceCell;
 use crate::{clock, control, file::RrosFileBinding, observable, poll, proxy, thread, xbuf};
 
 use alloc::rc::Rc;
@@ -18,7 +21,7 @@ use kernel::{
     io_buffer::IoBufferWriter,
     irq_work, kernelh,
     prelude::*,
-    rbtree, spinlock_init,
+    rbtree, new_spinlock,
     str::CStr,
     sync::{Lock, SpinLock},
     sysfs, types,

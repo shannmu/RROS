@@ -1,6 +1,7 @@
 use crate::{fifo::*, sched::*, thread::*, timer::*, RROS_OOB_CPUS};
 use core::clone::Clone;
-use kernel::{c_str, cpumask::CpumaskT, prelude::*, spinlock_init, sync::Lock, sync::SpinLock};
+use core::ops::Deref;
+use kernel::{c_str, cpumask::CpumaskT, prelude::*, new_spinlock, sync::Lock, sync::SpinLock};
 
 #[allow(dead_code)]
 pub fn test_init_thread(thread: Arc<SpinLock<RrosThread>>, prio: i32) -> Result<usize> {

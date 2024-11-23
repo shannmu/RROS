@@ -12,7 +12,7 @@ use crate::{
     sched::{rros_disable_preempt, rros_enable_preempt},
     timeout::{RrosTmode, RROS_INFINITE, RROS_NONBLOCK},
 };
-use core::{convert::TryInto, default::Default, mem::transmute, ops::DerefMut, ptr::NonNull, u16};
+use core::{convert::TryInto, default::Default, mem::transmute, ops::DerefMut, ops::Deref,ptr::NonNull, u16};
 use kernel::{
     bindings, c_types,
     endian::be16,
@@ -22,10 +22,12 @@ use kernel::{
     prelude::*,
     skbuff,
     socket::Sockaddr,
-    sync::Lock,
+    sync::Lock,sync::SpinLock,
     types::*,
     Error, Result,
+    new_spinlock,
 };
+use core::cell::OnceCell;
 
 // protocol hash table
 init_static_sync! {

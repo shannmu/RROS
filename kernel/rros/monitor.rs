@@ -1,6 +1,6 @@
 use alloc::rc::Rc;
 
-use core::{cell::RefCell, convert::TryFrom, mem::size_of, sync::atomic::AtomicUsize};
+use core::{cell::RefCell, convert::TryFrom, mem::size_of, sync::atomic::AtomicUsize,cell::OnceCell};
 
 use crate::{
     clock, factory,
@@ -12,7 +12,7 @@ use crate::{
 
 use kernel::{
     c_types, device::DeviceType, file::File, file_operations::FileOperations,
-    io_buffer::IoBufferWriter, prelude::*, spinlock_init, str::CStr, sync::SpinLock, user_ptr,
+    io_buffer::IoBufferWriter, prelude::*, new_spinlock, str::CStr, sync::SpinLock, user_ptr,
     Error,
 };
 

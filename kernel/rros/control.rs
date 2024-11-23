@@ -19,6 +19,8 @@ use kernel::{
     new_spinlock,
 };
 
+use core::cell::OnceCell;
+
 pub const CONFIG_RROS_NR_CONTROL: usize = 0;
 
 pub static mut RROS_CONTROL_FACTORY: Pin<Box<SpinLock<RrosFactory>>> = unsafe {

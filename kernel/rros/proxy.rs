@@ -33,7 +33,10 @@ use kernel::{
     vmalloc::c_kzalloc,
     waitqueue,
     workqueue::*,
+    new_spinlock,
 };
+
+use core::cell::OnceCell;
 
 const FMODE_ATOMIC_POS: u32 = 0x8000;
 type LoffT = i64;

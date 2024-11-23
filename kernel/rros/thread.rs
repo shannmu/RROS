@@ -13,6 +13,7 @@ use crate::{
 
 use alloc::rc::Rc;
 use kernel::dovetail::InbandEventType;
+use core::cell::OnceCell;
 
 use core::{
     cell::RefCell,
@@ -20,6 +21,7 @@ use core::{
     ops::DerefMut,
     ptr::{self, null_mut},
     result::Result::{Err, Ok},
+    ops::Deref,
 };
 
 #[warn(unused_mut)]

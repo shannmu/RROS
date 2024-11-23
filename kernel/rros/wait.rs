@@ -11,7 +11,7 @@ use crate::{
 
 use alloc::sync::Arc;
 
-use core::{clone::Clone, ops::FnMut, ptr::NonNull, sync::atomic::AtomicBool};
+use core::{clone::Clone, ops::FnMut, ptr::NonNull, sync::atomic::AtomicBool,ops::Deref};
 
 use kernel::{
     bindings,
