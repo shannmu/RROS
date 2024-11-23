@@ -1,4 +1,4 @@
-use core::{clone::Clone, ffi::c_void, mem::size_of, ptr::NonNull};
+use core::{clone::Clone, ffi::c_void, mem::size_of, ptr::NonNull,ops::Deref};
 
 use kernel::{
     bindings, c_str, init_static_sync,
@@ -45,8 +45,15 @@ unsafe impl Send for ListThreadSafeWrapper {}
 // init_static_sync! {
 //     static ACTIVE_PORT_LIST : SpinLock<ListThreadSafeWrapper> = ListThreadSafeWrapper(List::new());
 // }
-static ACTIVE_PORT_LIST : Pin<Box<SpinLock<ListThreadSafeWrapper>>> = Box::pin_init(new_spinlock!(ListThreadSafeWrapper(List::new()))).unwrap();
+static mut ACTIVE_PORT_LIST: OnceCell<Pin<Box<SpinLock<ListThreadSafeWrapper>>>> = OnceCell::new();
 
+pub fn active_port_list_init() {
+    unsafe {
+        ACTIVE_PORT_LIST.get_or_init(|| {
+            Box::pin_init(new_spinlock!(ListThreadSafeWrapper(List::new()))).unwrap()
+        });
+    }
+}
 pub fn start_handler_thread(
     func: Box<dyn FnOnce()>,
     name: &'static kernel::str::CStr,
@@ -291,13 +298,14 @@ impl NetDevice {
         est.refs += 1;
         self.set_oob_port();
 
-        let flags = ACTIVE_PORT_LIST.irq_lock_noguard();
+        active_port_list_init();
+        let flags = unsafe { ACTIVE_PORT_LIST.get().unwrap().irq_lock_noguard() };
         unsafe {
-            (*ACTIVE_PORT_LIST.locked_data().get())
+            (*ACTIVE_PORT_LIST.get().unwrap().locked_data().get())
                 .0
                 .push_back(Box::try_new(NetDevice(self.0.clone())).unwrap());
         }
-        ACTIVE_PORT_LIST.irq_unlock_noguard(flags);
+        unsafe { ACTIVE_PORT_LIST.get().unwrap().irq_unlock_noguard(flags) };
         pr_crit!("enable oob port success");
 
         return 0;
@@ -366,20 +374,21 @@ impl NetDevice {
 
     pub fn net_get_dev_by_index(net: *mut Namespace, ifindex: i32) -> Option<Self> {
         assert!(ifindex != 0);
-        let flags = ACTIVE_PORT_LIST.irq_lock_noguard();
+        active_port_list_init();
+        let flags = unsafe { ACTIVE_PORT_LIST.get().unwrap().irq_lock_noguard() };
 
-        let list = unsafe { &mut (*ACTIVE_PORT_LIST.locked_data().get()).0 };
+        let list = unsafe { &mut (*ACTIVE_PORT_LIST.get().unwrap().locked_data().get()).0 };
         let cursor = list.cursor_front();
         while let Some(item) = cursor.current_mut() {
             if core::ptr::eq(item.get_net(), net) && item.ifindex() == ifindex {
                 unsafe { item.dev_state_mut().as_mut().crossing.down() };
                 let ret = NetDevice(item.0.clone());
-                ACTIVE_PORT_LIST.irq_unlock_noguard(flags);
+                unsafe { ACTIVE_PORT_LIST.get().unwrap().irq_unlock_noguard(flags) };
                 return Some(ret);
             }
         }
 
-        ACTIVE_PORT_LIST.irq_unlock_noguard(flags);
+        unsafe { ACTIVE_PORT_LIST.get().unwrap().irq_unlock_noguard(flags) };
         return None;
     }
 }

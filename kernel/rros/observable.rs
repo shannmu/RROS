@@ -805,12 +805,13 @@ impl FileOpener<u8> for ObservableOps {
             let b = KgidT::from_inode_ptr(shared as *const u8);
             // let a = KuidT((*(shared as *const u8 as *const bindings::inode)).i_uid);
             // let b = KgidT((*(shared as *const u8 as *const bindings::inode)).i_gid);
-            (*RROS_OBSERVABLE_FACTORY.locked_data().get())
+            rros_observable_factory_init();
+            (*RROS_OBSERVABLE_FACTORY.get_mut().unwrap().locked_data().get())
                 .inside
                 .as_mut()
                 .unwrap()
                 .kuid = Some(a);
-            (*RROS_OBSERVABLE_FACTORY.locked_data().get())
+            (*RROS_OBSERVABLE_FACTORY.get_mut().unwrap().locked_data().get())
                 .inside
                 .as_mut()
                 .unwrap()
@@ -956,29 +957,36 @@ pub fn observable_factory_dispose(_ele: RrosElement) {
     pr_debug!("[observable] observable_factory_dispose");
 }
 
-pub static mut RROS_OBSERVABLE_FACTORY: Pin<Box<SpinLock<factory::RrosFactory>>> = unsafe {
-    Box::pin_init(
-        new_spinlock!(RrosFactory {
-        name: CStr::from_bytes_with_nul_unchecked("observable\0".as_bytes()),
-        nrdev: CONFIG_RROS_NR_OBSERVABLE + CONFIG_RROS_NR_THREADS,
-        build: Some(observable_factory_build),
-        dispose: Some(observable_factory_dispose),
-        attrs: None,
-        flags: factory::RrosFactoryType::CLONE,
-        inside: Some(RrosFactoryInside {
-            type_: device::DeviceType::new(),
-            class: None,
-            cdev: None,
-            device: None,
-            sub_rdev: None,
-            kuid: None,
-            kgid: None,
-            minor_map: None,
-            index: None,
-            name_hash: None,
-            hash_lock: None,
-            register: None,
-        }),
-    })
-).unwrap()
-};
+pub static mut RROS_OBSERVABLE_FACTORY: OnceCell<Pin<Box<SpinLock<factory::RrosFactory>>>> = OnceCell::new();
+
+pub fn rros_observable_factory_init() {
+    unsafe {
+        RROS_OBSERVABLE_FACTORY.get_or_init(|| {
+            Box::pin_init(
+                new_spinlock!(RrosFactory {
+                    name: CStr::from_bytes_with_nul_unchecked("observable\0".as_bytes()),
+                    nrdev: CONFIG_RROS_NR_OBSERVABLE + CONFIG_RROS_NR_THREADS,
+                    build: Some(observable_factory_build),
+                    dispose: Some(observable_factory_dispose),
+                    attrs: None,
+                    flags: factory::RrosFactoryType::CLONE,
+                    inside: Some(RrosFactoryInside {
+                        type_: device::DeviceType::new(),
+                        class: None,
+                        cdev: None,
+                        device: None,
+                        sub_rdev: None,
+                        kuid: None,
+                        kgid: None,
+                        minor_map: None,
+                        index: None,
+                        name_hash: None,
+                        hash_lock: None,
+                        register: None,
+                    }),
+                })
+            )
+            .unwrap()
+        });
+    }
+}

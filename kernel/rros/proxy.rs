@@ -842,31 +842,38 @@ fn proxy_factory_build(
     unsafe { (*proxy).element.clone() }
 }
 
-pub static mut RROS_PROXY_FACTORY: SpinLock<RrosFactory> = unsafe {
-    SpinLock::new(RrosFactory {
-        name: CStr::from_bytes_with_nul_unchecked("proxy\0".as_bytes()),
-        // fops: Some(&RustFileProxy),
-        nrdev: CONFIG_RROS_NR_PROXIES,
-        build: Some(proxy_factory_build),
-        dispose: Some(proxy_factory_dispose),
-        attrs: None, //sysfs::attribute_group::new(),
-        flags: crate::factory::RrosFactoryType::CLONE,
-        inside: Some(RrosFactoryInside {
-            type_: DeviceType::new(),
-            class: None,
-            cdev: None,
-            device: None,
-            sub_rdev: None,
-            kuid: None,
-            kgid: None,
-            minor_map: None,
-            index: None,
-            name_hash: None,
-            hash_lock: None,
-            register: None,
-        }),
-    })
-};
+pub static mut RROS_PROXY_FACTORY: OnceCell<Pin<Box<SpinLock<RrosFactory>>>> = OnceCell::new();
+
+pub fn rros_proxy_factory_init() {
+    unsafe {
+        RROS_PROXY_FACTORY.get_or_init(|| {
+            Box::pin_init(new_spinlock!(RrosFactory {
+                name: CStr::from_bytes_with_nul_unchecked("proxy\0".as_bytes()),
+                // fops: Some(&RustFileProxy),
+                nrdev: CONFIG_RROS_NR_PROXIES,
+                build: Some(proxy_factory_build),
+                dispose: Some(proxy_factory_dispose),
+                attrs: None, // sysfs::attribute_group::new(),
+                flags: crate::factory::RrosFactoryType::CLONE,
+                inside: Some(RrosFactoryInside {
+                    type_: DeviceType::new(),
+                    class: None,
+                    cdev: None,
+                    device: None,
+                    sub_rdev: None,
+                    kuid: None,
+                    kgid: None,
+                    minor_map: None,
+                    index: None,
+                    name_hash: None,
+                    hash_lock: None,
+                    register: None,
+                }),
+            }))
+            .unwrap()
+        });
+    }
+}
 pub struct ProxyOps;
 
 impl FileOpener<u8> for ProxyOps {

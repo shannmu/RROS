@@ -58,8 +58,15 @@ use kernel::{
     user_ptr::{UserSlicePtr, UserSlicePtrReader, UserSlicePtrWriter},
 };
 
-static mut CLOCKLIST_LOCK: SpinLock<i32> = unsafe { SpinLock::new(1) };
+pub static mut CLOCKLIST_LOCK: OnceCell<Pin<Box<SpinLock<i32>>>> = OnceCell::new();
 
+pub fn clocklist_lock_init() {
+    unsafe {
+        CLOCKLIST_LOCK.get_or_init(|| {
+            Box::pin_init(new_spinlock!(1, "CLOCKLIST_LOCK")).unwrap()
+        });
+    }
+}
 // Define it as a constant here first, and then read it from /dev/rros.
 const CONFIG_RROS_LATENCY_USER: KtimeT = 0;
 const CONFIG_RROS_LATENCY_KERNEL: KtimeT = 0;
@@ -540,30 +547,37 @@ pub static mut CLOCK_LIST: List<*mut RrosClock> = List::<*mut RrosClock> {
     },
 };
 
-pub static mut RROS_CLOCK_FACTORY: SpinLock<factory::RrosFactory> = unsafe {
-    SpinLock::new(factory::RrosFactory {
-        name: unsafe { CStr::from_bytes_with_nul_unchecked("clock\0".as_bytes()) },
-        nrdev: CONFIG_RROS_NR_CLOCKS,
-        build: None,
-        dispose: Some(clock_factory_dispose),
-        attrs: None, //sysfs::attribute_group::new(),
-        flags: factory::RrosFactoryType::Invalid,
-        inside: Some(factory::RrosFactoryInside {
-            type_: DeviceType::new(),
-            class: None,
-            cdev: None,
-            device: None,
-            sub_rdev: None,
-            kuid: None,
-            kgid: None,
-            minor_map: None,
-            index: None,
-            name_hash: None,
-            hash_lock: None,
-            register: None,
-        }),
-    })
-};
+pub static mut RROS_CLOCK_FACTORY: OnceCell<Pin<Box<SpinLock<factory::RrosFactory>>>> = OnceCell::new();
+
+pub fn rros_clock_factory_init() {
+    unsafe {
+        RROS_CLOCK_FACTORY.get_or_init(|| {
+            Box::pin_init(new_spinlock!(factory::RrosFactory {
+                name: CStr::from_bytes_with_nul_unchecked("clock\0".as_bytes()),
+                nrdev: CONFIG_RROS_NR_CLOCKS,
+                build: None,
+                dispose: Some(clock_factory_dispose),
+                attrs: None, // sysfs::attribute_group::new(),
+                flags: factory::RrosFactoryType::Invalid,
+                inside: Some(factory::RrosFactoryInside {
+                    type_: DeviceType::new(),
+                    class: None,
+                    cdev: None,
+                    device: None,
+                    sub_rdev: None,
+                    kuid: None,
+                    kgid: None,
+                    minor_map: None,
+                    index: None,
+                    name_hash: None,
+                    hash_lock: None,
+                    register: None,
+                }),
+            }))
+            .unwrap()
+        });
+    }
+}
 
 pub struct RrosTimerFd {
     timer: Arc<Pin<Box<SpinLock<RrosTimer>>>>,
@@ -1081,7 +1095,7 @@ pub fn do_clock_tick(clock: &mut RrosClock, tmb: *mut RrosTimerbase) {
             let timer_addr = timer.locked_data().get();
 
             let inband_timer_addr = (*rq).get_inband_timer().locked_data().get();
-            if (timer_addr == inband_timer_addr) {
+            if (timer_addr as *const _ == inband_timer_addr as *const _) {
                 (*rq).add_local_flags(RQ_TPROXY);
                 (*rq).change_local_flags(!RQ_TDEFER);
                 continue;
@@ -1174,7 +1188,7 @@ fn init_clock(clock: *mut RrosClock, master: *mut RrosClock) -> Result<usize> {
     unsafe {
         ret = factory::rros_init_element(
             (*clock).element.as_ref().unwrap().clone(),
-            &mut RROS_CLOCK_FACTORY,
+            RROS_CLOCK_FACTORY.get_mut().unwrap(),
             (*clock).flags & RROS_CLONE_PUBLIC,
         );
     }
@@ -1190,7 +1204,7 @@ fn init_clock(clock: *mut RrosClock, master: *mut RrosClock) -> Result<usize> {
     unsafe {
         ret = factory::rros_create_core_element_device(
             (*clock).element.as_ref().unwrap().clone(),
-            &mut RROS_CLOCK_FACTORY,
+            RROS_CLOCK_FACTORY.get_mut().unwrap(),
             (*clock).name,
         );
     }
@@ -1201,9 +1215,10 @@ fn init_clock(clock: *mut RrosClock, master: *mut RrosClock) -> Result<usize> {
     }
 
     unsafe {
-        CLOCKLIST_LOCK.lock();
+        clocklist_lock_init();
+        CLOCKLIST_LOCK.get().unwrap().lock();
         CLOCK_LIST.add_head(clock);
-        CLOCKLIST_LOCK.unlock();
+        CLOCKLIST_LOCK.get().unwrap().unlock();
     }
 
     Ok(0)

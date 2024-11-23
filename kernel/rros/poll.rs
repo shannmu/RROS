@@ -1125,30 +1125,36 @@ impl FileOperations for PollOps {
     }
 }
 
-pub static mut RROS_POLL_FACTORY: Pin<Box<SpinLock<factory::RrosFactory>>> = unsafe {
-    Box::pin_init(
-        new_spinlock!(factory::RrosFactory {
-            name: CStr::from_bytes_with_nul_unchecked("poll\0".as_bytes()),
-            // fops: Some(&Pollops),
-            nrdev: 0,
-            build: None,
-            dispose: None,
-            attrs: None,
-            flags: factory::RrosFactoryType::SINGLE,
-            inside: Some(factory::RrosFactoryInside {
-                type_: DeviceType::new(),
-                class: None,
-                cdev: None,
-                device: None,
-                sub_rdev: None,
-                kuid: None,
-                kgid: None,
-                minor_map: None,
-                index: None,
-                name_hash: None,
-                hash_lock: None,
-                register: None,
-            }),
-        })
-    ).unwrap()
-};
+pub static mut RROS_POLL_FACTORY: OnceCell<Pin<Box<SpinLock<factory::RrosFactory>>>> = OnceCell::new();
+
+pub fn rros_poll_factory_init() {
+    unsafe {
+        RROS_POLL_FACTORY.get_or_init(|| {
+            Box::pin_init(
+                new_spinlock!(factory::RrosFactory {
+                    name: CStr::from_bytes_with_nul_unchecked("poll\0".as_bytes()),
+                    // fops: Some(&Pollops),
+                    nrdev: 0,
+                    build: None,
+                    dispose: None,
+                    attrs: None,
+                    flags: factory::RrosFactoryType::SINGLE,
+                    inside: Some(factory::RrosFactoryInside {
+                        type_: DeviceType::new(),
+                        class: None,
+                        cdev: None,
+                        device: None,
+                        sub_rdev: None,
+                        kuid: None,
+                        kgid: None,
+                        minor_map: None,
+                        index: None,
+                        name_hash: None,
+                        hash_lock: None,
+                        register: None,
+                    }),
+                })
+            ).unwrap()
+        });
+    }
+}

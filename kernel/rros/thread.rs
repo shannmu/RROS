@@ -154,38 +154,43 @@ pub const RROS_THRIOC_GET_STATE: u32 = 4;
 // TODO: move this to the config file
 pub const CONFIG_RROS_NR_THREADS: usize = 16;
 
-pub static mut RROS_THREAD_FACTORY: Pin<Box<SpinLock<factory::RrosFactory>>> = unsafe {
-    Box::pin_init(new_spinlock!
-        (factory::RrosFactory {
-        // TODO: move this and clock factory name to a variable
-        name: CStr::from_bytes_with_nul_unchecked("thread\0".as_bytes()),
-        // fops: Some(&ThreadOps),
-        nrdev: CONFIG_RROS_NR_THREADS,
-        // TODO: add the corresponding ops
-        build: Some(thread_factory_build),
-        // TODO: add the corresponding ops
-        dispose: None,
-        // TODO: add the corresponding attr
-        attrs: None, //sysfs::attribute_group::new(),
-        // TODO: rename this flags to the bit level variable RROS_FACTORY_CLONE and RROS_FACTORY_SINGLE
-        flags: factory::RrosFactoryType::CLONE,
-        inside: Some(factory::RrosFactoryInside {
-            type_: DeviceType::new(),
-            class: None,
-            cdev: None,
-            device: None,
-            sub_rdev: None,
-            kuid: None,
-            kgid: None,
-            minor_map: None,
-            index: None,
-            name_hash: None,
-            hash_lock: None,
-            register: None,
-        }),
-    })
-).unwrap()
-};
+pub static mut RROS_THREAD_FACTORY: OnceCell<Pin<Box<SpinLock<factory::RrosFactory>>>> = OnceCell::new();
+
+pub fn rros_thread_factory_init() {
+    unsafe {
+        RROS_THREAD_FACTORY.get_or_init(|| {
+            Box::pin_init(new_spinlock!(factory::RrosFactory {
+                // TODO: move this and clock factory name to a variable
+                name: CStr::from_bytes_with_nul_unchecked("thread\0".as_bytes()),
+                // fops: Some(&ThreadOps),
+                nrdev: CONFIG_RROS_NR_THREADS,
+                // TODO: add the corresponding ops
+                build: Some(thread_factory_build),
+                // TODO: add the corresponding ops
+                dispose: None,
+                // TODO: add the corresponding attr
+                attrs: None, // sysfs::attribute_group::new(),
+                // TODO: rename this flags to the bit level variable RROS_FACTORY_CLONE and RROS_FACTORY_SINGLE
+                flags: factory::RrosFactoryType::CLONE,
+                inside: Some(factory::RrosFactoryInside {
+                    type_: DeviceType::new(),
+                    class: None,
+                    cdev: None,
+                    device: None,
+                    sub_rdev: None,
+                    kuid: None,
+                    kgid: None,
+                    minor_map: None,
+                    index: None,
+                    name_hash: None,
+                    hash_lock: None,
+                    register: None,
+                }),
+            }))
+            .unwrap()
+        });
+    }
+}
 
 #[derive(Default)]
 pub struct ThreadOps;
@@ -282,7 +287,7 @@ impl RrosThreadState {
 }
 
 pub fn rros_init_thread(
-    thread: &Option<Arc<SpinLock<RrosThread>>>,
+    thread: &Option<Arc<Pin<Box<SpinLock<RrosThread>>>>>,
     // rq_s: Rc<RefCell<rros_rq>>,
     // iattr: Rc<RefCell<RrosInitThreadAttr>>,
     iattr: RrosInitThreadAttr,

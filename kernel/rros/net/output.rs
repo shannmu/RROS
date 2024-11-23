@@ -21,9 +21,19 @@ use kernel::{
 
 // NOTE:initialize in rros_net_init_tx
 // TODO: The implementation here does not use DEFINE_PER_CPU because Rust does not yet support statically defined percpu variables.
-init_static_sync! {
-    static OOB_TX_RELAY : SpinLock<RrosSkbQueueInner> = RrosSkbQueueInner::default();
+// init_static_sync! {
+//     static OOB_TX_RELAY : SpinLock<RrosSkbQueueInner> = RrosSkbQueueInner::default();
+// }
+pub static mut OOB_TX_RELAY: OnceCell<Pin<Box<SpinLock<RrosSkbQueueInner>>>> = OnceCell::new();
+
+pub fn oob_tx_relay_init() {
+    unsafe {
+        OOB_TX_RELAY.get_or_init(|| {
+            Box::pin_init(new_spinlock!(RrosSkbQueueInner::default())).unwrap()
+        });
+    }
 }
+
 static mut OOB_XMIT_WORK: IrqWork = unsafe {
     core::mem::transmute::<[u8; core::mem::size_of::<IrqWork>()], IrqWork>(
         [0; core::mem::size_of::<IrqWork>()],
@@ -109,9 +119,10 @@ fn skb_inband_xmit_backlog() {
     }
     let mut list = bindings::list_head::default();
     init_list_head!(&mut list);
-    let flags = OOB_TX_RELAY.irq_lock_noguard(); // TODO: Whether lock is required.
+    oob_tx_relay_init();
+    let flags = unsafe { OOB_TX_RELAY.get().unwrap().irq_lock_noguard() }; // TODO: Whether lock is required.
 
-    if unsafe { (*OOB_TX_RELAY.locked_data().get()).move_queue(&mut list) } {
+    if unsafe { (*OOB_TX_RELAY.get().unwrap().locked_data().get()).move_queue(&mut list) } {
         list_for_each_entry_safe!(
             skb,
             n,
@@ -127,7 +138,7 @@ fn skb_inband_xmit_backlog() {
             __bindgen_anon_1.list
         );
     }
-    OOB_TX_RELAY.irq_unlock_noguard(flags);
+    unsafe { OOB_TX_RELAY.get().unwrap().irq_unlock_noguard(flags) };
 }
 
 // fn xmit_oob(dev : *mut bindings::net_device, skb : *mut bindings::sk_buff) -> i32{
@@ -173,9 +184,10 @@ pub fn rros_net_transmit(mut skb: &mut RrosSkBuff) -> Result<()> {
         }
     }
 
-    let flags = OOB_TX_RELAY.irq_lock_noguard();
-    unsafe { (*OOB_TX_RELAY.locked_data().get()).add(skb) };
-    OOB_TX_RELAY.irq_unlock_noguard(flags);
+    oob_tx_relay_init();
+    let flags = unsafe { OOB_TX_RELAY.get().unwrap().irq_lock_noguard() };
+    unsafe { (*OOB_TX_RELAY.get().unwrap().locked_data().get()).add(skb) };
+    unsafe { OOB_TX_RELAY.get().unwrap().irq_unlock_noguard(flags) };
     unsafe {
         OOB_XMIT_WORK.irq_work_queue()?;
     }

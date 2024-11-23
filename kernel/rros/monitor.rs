@@ -238,7 +238,8 @@ pub fn monitor_factory_build(
     };
 
     let element = Rc::try_new(RefCell::new(RrosElement::new()?))?;
-    let factory: &mut SpinLock<RrosFactory> = unsafe { &mut RROS_MONITOR_FACTORY };
+    rros_monitor_factory_init();
+    let factory: &mut Pin<Box<SpinLock<RrosFactory>>> = unsafe { RROS_MONITOR_FACTORY.get_mut().unwrap() };
     let _ret = factory::rros_init_element(element.clone(), factory, clone_flags);
 
     let mut state = RrosMonitorState::new()?;
@@ -271,7 +272,7 @@ pub fn monitor_factory_build(
     // init monitor
     let mon = match state.u {
         Some(RrosMonitorStateItem::Gate(ref _rros_monitor_state_item_gate)) => {
-            let mut item = RrosMonitorItem1::new()?;
+             let mut item = RrosMonitorItem1::new()?;
             // let pinned = unsafe { Pin::new_unchecked(&mut item.mutex) };
             // spinlock_init!(pinned, "RrosMonitorItem1_lock");
 
@@ -304,31 +305,38 @@ pub fn monitor_factory_build(
 }
 
 #[allow(dead_code)]
-pub static mut RROS_MONITOR_FACTORY: SpinLock<factory::RrosFactory> = unsafe {
-    SpinLock::new(factory::RrosFactory {
-        name: CStr::from_bytes_with_nul_unchecked("monitor\0".as_bytes()),
-        // fops: Some(&MonitorOps),
-        nrdev: CONFIG_RROS_MONITOR,
-        build: None,
-        dispose: Some(monitor_factory_dispose),
-        attrs: None, //sysfs::attribute_group::new(),
-        flags: factory::RrosFactoryType::CLONE,
-        inside: Some(factory::RrosFactoryInside {
-            type_: DeviceType::new(),
-            class: None,
-            cdev: None,
-            device: None,
-            sub_rdev: None,
-            kuid: None,
-            kgid: None,
-            minor_map: None,
-            index: None,
-            name_hash: None,
-            hash_lock: None,
-            register: None,
-        }),
-    })
-};
+pub static mut RROS_MONITOR_FACTORY: OnceCell<Pin<Box<SpinLock<factory::RrosFactory>>>> = OnceCell::new();
+
+pub fn rros_monitor_factory_init() {
+    unsafe {
+        RROS_MONITOR_FACTORY.get_or_init(|| {
+            Box::pin_init(new_spinlock!(factory::RrosFactory {
+                name: CStr::from_bytes_with_nul_unchecked("monitor\0".as_bytes()),
+                // fops: Some(&MonitorOps),
+                nrdev: CONFIG_RROS_MONITOR,
+                build: None,
+                dispose: Some(monitor_factory_dispose),
+                attrs: None, // sysfs::attribute_group::new(),
+                flags: factory::RrosFactoryType::CLONE,
+                inside: Some(factory::RrosFactoryInside {
+                    type_: DeviceType::new(),
+                    class: None,
+                    cdev: None,
+                    device: None,
+                    sub_rdev: None,
+                    kuid: None,
+                    kgid: None,
+                    minor_map: None,
+                    index: None,
+                    name_hash: None,
+                    hash_lock: None,
+                    register: None,
+                }),
+            }))
+            .unwrap()
+        });
+    }
+}
 
 #[allow(dead_code)]
 pub fn monitor_factory_dispose(_ele: factory::RrosElement) {}

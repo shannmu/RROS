@@ -239,7 +239,7 @@ pub fn __rros_enqueue_fifo_thread(thread: Arc<Pin<Box<SpinLock<sched::RrosThread
         loop {
             unsafe {
                 let pos_cprio = p.unwrap().as_ref().value.lock().cprio;
-                if p.unwrap().as_ptr() == &mut q.head as *mut Node<Arc<SpinLock<sched::RrosThread>>>
+                if p.unwrap().as_ptr() == &mut q.head as *mut Node<Arc<Pin<Box<SpinLock<sched::RrosThread>>>>>
                     || new_cprio <= pos_cprio
                 {
                     p.unwrap()
