@@ -160,13 +160,14 @@ pub fn tp_init(rq: *mut rros_rq) -> Result<usize> {
         let mut temp: [RrosTpRq; CONFIG_RROS_SCHED_TP_NR_PART as usize] = [r1, r2, r3, r4, r5];
         for n in 0..CONFIG_RROS_SCHED_TP_NR_PART {
             // temp[n as usize].runnable.head = Some(List::new(Arc::try_new(SpinLock::new(RrosThread::new()?))?));
-            let mut tmp = Arc::<SpinLock<RrosThread>>::try_new_uninit()?;
+            let mut tmp = Arc::<Pin<Box<SpinLock<RrosThread>>>>::try_new_uninit()?;
+            let mut tmp_spinlock = Box::pin_init(new_spinlock!(RrosThread::new().unwrap(),"tp kthread")).unwrap();
             let mut tmp = {
-                core::ptr::write_bytes(Arc::get_mut_unchecked(&mut tmp), 0, 1);
+                Arc::get_mut(&mut tmp).unwrap().write(tmp_spinlock);
                 tmp.assume_init()
             };
-            let pinned = Pin::new_unchecked(Arc::get_mut_unchecked(&mut tmp));
-            spinlock_init!(pinned, "tp kthread");
+            // let pinned = Pin::new_unchecked(Arc::get_mut_unchecked(&mut tmp));
+            // spinlock_init!(pinned, "tp kthread");
 
             // let mut thread = SpinLock::new(RrosThread::new()?);
             // let pinned = Pin::new_unchecked(&mut thread);
@@ -190,11 +191,11 @@ pub fn tp_init(rq: *mut rros_rq) -> Result<usize> {
         tp.partitions = Some(temp);
         tp.tps = 0 as *mut RrosTpRq;
         tp.gps = 0 as *mut RrosTpSchedule;
-        tp.tf_timer = Some(Arc::try_new(SpinLock::new(RrosTimer::new(0)))?);
+        // tp.tf_timer = Some(Arc::try_new(SpinLock::new(RrosTimer::new(0)))?);
 
-        let mut tf_timer = SpinLock::new(RrosTimer::new(2));
-        let pinned_p = Pin::new_unchecked(&mut tf_timer);
-        spinlock_init!(pinned_p, "ptimer");
+        let mut tf_timer = Box::pin_init(new_spinlock!(RrosTimer::new(2),"ptimer")).unwrap();
+        // let pinned_p = Pin::new_unchecked(&mut tf_timer);
+        // spinlock_init!(pinned_p, "ptimer");
         tp.tf_timer = Some(Arc::try_new(tf_timer)?);
 
         rros_init_timer_on_rq(

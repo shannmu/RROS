@@ -254,8 +254,9 @@ impl NetDevice {
             }
             // est.qdisc = //TODO:
 
-            let pinned = unsafe { Pin::new_unchecked(&mut est.rx_queue) };
-            spinlock_init!(pinned, "RrosSkbQueue");
+            // let pinned = unsafe { Pin::new_unchecked(&mut est.rx_queue) };
+            // spinlock_init!(pinned, "RrosSkbQueue");
+            est.rx_queue = Box::pin_init(new_spinlock!(RrosSkbQueueInner::default(),"RrosSkbQueue")).unwrap();
             unsafe { (*est.rx_queue.locked_data().get()).init() };
             est.rx_flag.init();
 

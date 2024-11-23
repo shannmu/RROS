@@ -574,7 +574,7 @@ pub struct RrosTimerFd {
 impl RrosTimerFd {
     fn new() -> Self {
         Self {
-            timer: Arc::try_new(unsafe { SpinLock::new(RrosTimer::new(0)) }).unwrap(),
+            timer: Arc::try_new(unsafe { Box::pin_init(new_spinlock!(RrosTimer::new(0))).unwrap() }).unwrap(),
             //FIXME: readers initiation is not sure
             readers: RrosWaitQueue::new(core::ptr::null_mut(), 0),
             poll_head: RrosPollHead::new(),
@@ -1269,8 +1269,8 @@ fn rros_init_clock(clock: &mut RrosClock, affinity: &CpumaskT) -> Result<usize> 
 }
 
 pub fn rros_clock_init() -> Result<usize> {
-    let pinned = unsafe { Pin::new_unchecked(&mut CLOCKLIST_LOCK) };
-    spinlock_init!(pinned, "CLOCKLIST_LOCK");
+    // let pinned = unsafe { Pin::new_unchecked(&mut CLOCKLIST_LOCK) };
+    // spinlock_init!(pinned, "CLOCKLIST_LOCK");
     unsafe {
         RROS_MONO_CLOCK.reset_gravity();
         RROS_REALTIME_CLOCK.reset_gravity();

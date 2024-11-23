@@ -272,11 +272,11 @@ pub fn monitor_factory_build(
     let mon = match state.u {
         Some(RrosMonitorStateItem::Gate(ref _rros_monitor_state_item_gate)) => {
             let mut item = RrosMonitorItem1::new()?;
-            let pinned = unsafe { Pin::new_unchecked(&mut item.mutex) };
-            spinlock_init!(pinned, "RrosMonitorItem1_lock");
+            // let pinned = unsafe { Pin::new_unchecked(&mut item.mutex) };
+            // spinlock_init!(pinned, "RrosMonitorItem1_lock");
 
-            let pinned = unsafe { Pin::new_unchecked(&mut item.lock) };
-            spinlock_init!(pinned, "value");
+            // let pinned = unsafe { Pin::new_unchecked(&mut item.lock) };
+            // spinlock_init!(pinned, "value");
             RrosMonitor::new(
                 element,
                 Some(state),

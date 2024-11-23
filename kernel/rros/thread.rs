@@ -1591,21 +1591,21 @@ fn thread_factory_build(
 
     unsafe {
         // KTHREAD_RUNNER_1 = Some(KthreadRunner::new(kfn_1));
-        let mut thread = SpinLock::new(RrosThread::new().unwrap());
+        let mut thread = Box::pin_init(new_spinlock!(RrosThread::new().unwrap(),"test_threads1")).unwrap();
         pr_debug!("at the thread build thread address is {:p} ", &thread);
-        let pinned = Pin::new_unchecked(&mut thread);
-        // pr_debug!("at the thread build thread address is {:p} ", &thread);
-        spinlock_init!(pinned, "test_threads1");
+        // let pinned = Pin::new_unchecked(&mut thread);
+        // // pr_debug!("at the thread build thread address is {:p} ", &thread);
+        // spinlock_init!(pinned, "test_threads1");
         curr = Arc::try_new(thread).unwrap();
         // pr_debug!("at the thread build thread address is {:p} ", &thread);
 
-        let mut r = SpinLock::new(timer::RrosTimer::new(1));
-        let pinned_r = Pin::new_unchecked(&mut r);
-        spinlock_init!(pinned_r, "rtimer_1");
+        let mut r = Box::pin_init(new_spinlock!(timer::RrosTimer::new(1),"rtimer_1")).unwrap();
+        // let pinned_r = Pin::new_unchecked(&mut r);
+        // spinlock_init!(pinned_r, "rtimer_1");
 
-        let mut p = SpinLock::new(timer::RrosTimer::new(1));
-        let pinned_p = Pin::new_unchecked(&mut p);
-        spinlock_init!(pinned_p, "ptimer_1");
+        let mut p = Box::pin_init(new_spinlock!(timer::RrosTimer::new(1),"ptimer_1")).unwrap();
+        // let pinned_p = Pin::new_unchecked(&mut p);
+        // spinlock_init!(pinned_p, "ptimer_1");
 
         curr.lock().rtimer = Some(Arc::try_new(r).unwrap());
         curr.lock().ptimer = Some(Arc::try_new(p).unwrap());
@@ -2446,36 +2446,37 @@ impl KthreadRunner {
     pub fn init(&mut self, kfn: Box<dyn FnOnce()>) {
         let mut kthread = RrosKthread::new(Some(kfn));
         // let mut thread = unsafe{SpinLock::new(RrosThread::new().unwrap())};
-        // let pinned: Pin<&mut SpinLock<RrosThread>> = unsafe{Pin::new_unchecked(&mut thread)};
+        // let pinned: Pin<&mut Pin<Box<SpinLock<RrosThread>>>> = unsafe{Pin::new_unchecked(&mut thread)};
         // spinlock_init!(pinned, "test_threads2");
         // kthread.thread = Some(Arc::try_new(thread).unwrap());
 
-        let mut tmp = Arc::<SpinLock<RrosThread>>::try_new_uninit().unwrap();
+        let mut tmp = Arc::<Pin<Box<SpinLock<RrosThread>>>>::try_new_uninit().unwrap();
+        let mut tmp_spinlock = Box::pin_init(new_spinlock!(RrosThread::new().unwrap(),"rros_kthreads")).unwrap();
         let mut tmp = unsafe {
-            ptr::write_bytes(Arc::get_mut_unchecked(&mut tmp), 0, 1);
+            Arc::get_mut(&mut tmp).unwrap().write(tmp_spinlock);
             tmp.assume_init()
         };
-        let pinned = unsafe { Pin::new_unchecked(Arc::get_mut_unchecked(&mut tmp)) };
-        spinlock_init!(pinned, "rros_kthreads");
+        // let pinned = unsafe { Pin::new_unchecked(Arc::get_mut_unchecked(&mut tmp)) };
+        // spinlock_init!(pinned, "rros_kthreads");
         unsafe {
             let _ret = (*Arc::get_mut_unchecked(&mut tmp).locked_data().get()).init();
         }
         kthread.thread = Some(tmp); //Arc::try_new(thread)?
                                     // unsafe{(*(*kthread.thread.as_mut().unwrap().locked_dataed_data().get()).get()).init().unwrap()};
-        let pinned = unsafe {
-            Pin::new_unchecked(
-                &mut *(Arc::into_raw(kthread.thread.clone().unwrap()) as *mut SpinLock<RrosThread>),
-            )
-        };
-        // &mut *Arc::into_raw( *(*rq_ptr).root_thread.clone().as_mut().unwrap()) as &mut SpinLock<RrosThread>
-        spinlock_init!(pinned, "rros_threads");
+        // let pinned = unsafe {
+        //     Pin::new_unchecked(
+        //         &mut *(Arc::into_raw(kthread.thread.clone().unwrap()) as *mut Pin<Box<SpinLock<RrosThread>>>),
+        //     )
+        // };
+        // // &mut *Arc::into_raw( *(*rq_ptr).root_thread.clone().as_mut().unwrap()) as &mut Pin<Box<SpinLock<RrosThread>>>
+        // spinlock_init!(pinned, "rros_threads");
 
-        let mut r = unsafe { SpinLock::new(timer::RrosTimer::new(1)) };
-        let pinned_r = unsafe { Pin::new_unchecked(&mut r) };
-        spinlock_init!(pinned_r, "rtimer_3");
-        let mut p = unsafe { SpinLock::new(timer::RrosTimer::new(1)) };
-        let pinned_p = unsafe { Pin::new_unchecked(&mut p) };
-        spinlock_init!(pinned_p, "ptimer_3");
+        let mut r = unsafe { Box::pin_init(new_spinlock!(timer::RrosTimer::new(1),"rtimer_3")).unwrap() };
+        // let pinned_r = unsafe { Pin::new_unchecked(&mut r) };
+        // spinlock_init!(pinned_r, "rtimer_3");
+        let mut p = unsafe { Box::pin_init(new_spinlock!(timer::RrosTimer::new(1),"ptimer_3")).unwrap() };
+        // let pinned_p = unsafe { Pin::new_unchecked(&mut p) };
+        // spinlock_init!(pinned_p, "ptimer_3");
 
         kthread.thread.as_mut().map(|thread| unsafe {
             let mut t = &mut (*(*thread).locked_data().get());
@@ -2860,10 +2861,10 @@ pub fn rros_kick_thread(thread: Arc<SpinLock<RrosThread>>, mut info: u32) {
 }
 
 #[inline]
-pub fn rros_thread_from_task(p: *mut bindings::task_struct) -> Result<Arc<SpinLock<RrosThread>>> {
-    let thread: Arc<SpinLock<RrosThread>>;
-    let thread_ptr = dovetail::dovetail_task_state(p).thread() as *mut SpinLock<RrosThread>;
-    if thread_ptr == 0 as *mut SpinLock<RrosThread> {
+pub fn rros_thread_from_task(p: *mut bindings::task_struct) -> Result<Arc<Pin<Box<SpinLock<RrosThread>>>>> {
+    let thread: Arc<Pin<Box<SpinLock<RrosThread>>>>;
+    let thread_ptr = dovetail::dovetail_task_state(p).thread() as *mut Pin<Box<SpinLock<RrosThread>>>;
+    if thread_ptr == 0 as *mut Pin<Box<SpinLock<RrosThread>>> {
         return Err(kernel::Error::EINVAL);
     }
 
@@ -2884,43 +2885,43 @@ pub fn rros_run_kthread_on_cpu(
     fmt: &'static CStr,
 ) -> Result<usize> {
     let mut iattr: RrosInitThreadAttr;
-    let sched_param: Arc<SpinLock<RrosSchedParam>>;
-    let mut thread: Arc<SpinLock<RrosThread>>;
+    let sched_param: Arc<Pin<Box<SpinLock<RrosSchedParam>>>>;
+    let mut thread: Arc<Pin<Box<SpinLock<RrosThread>>>>;
 
     /* this unsafe block is used to initialize RrosInitThreadAttr. */
     unsafe {
         iattr = RrosInitThreadAttr::new();
         iattr.affinity = CpumaskT::cpumask_of(cpu);
         iattr.sched_class = Some(&RROS_SCHED_FIFO);
-        sched_param = Arc::try_new(SpinLock::new(RrosSchedParam::new()))?;
+        sched_param = Arc::try_new(Box::pin_init(new_spinlock!(RrosSchedParam::new())).unwrap())?;
         (*sched_param.locked_data().get()).fifo.prio = 1;
         iattr.sched_param = Some(sched_param);
     }
 
     /* this unsafe block is used to initialize RrosThread. */
     unsafe {
-        let r = Arc::try_new(SpinLock::new(timer::RrosTimer::new(1)))?;
-        let p = Arc::try_new(SpinLock::new(timer::RrosTimer::new(1)))?;
+        let r = Arc::try_new(Box::pin_init(new_spinlock!(timer::RrosTimer::new(1),"rtimer")).unwrap())?;
+        let p = Arc::try_new(Box::pin_init(new_spinlock!(timer::RrosTimer::new(1),"ptimer")).unwrap())?;
 
-        thread = Arc::try_new(SpinLock::new(RrosThread::new()?))?;
-        let thread_ref = Arc::get_mut(&mut thread).unwrap();
-        let pinned = Pin::new_unchecked(thread_ref);
-        spinlock_init!(pinned, "kthread");
+        thread = Arc::try_new(Box::pin_init(new_spinlock!(RrosThread::new()?,"kthread")).unwrap())?;
+        // let thread_ref = Arc::get_mut(&mut thread).unwrap();
+        // let pinned = Pin::new_unchecked(thread_ref);
+        // spinlock_init!(pinned, "kthread");
 
         thread.lock().init()?;
         thread.lock().rtimer = Some(r);
         thread.lock().ptimer = Some(p);
 
-        let mut thread_guard = thread.lock();
-        let mut r_opt = thread_guard.rtimer.as_mut().unwrap();
-        let r_ref = Arc::get_mut(&mut r_opt).unwrap();
-        let pinned_r = Pin::new_unchecked(r_ref);
-        spinlock_init!(pinned_r, "rtimer");
+        // let mut thread_guard = thread.lock();
+        // let mut r_opt = thread_guard.rtimer.as_mut().unwrap();
+        // let r_ref = Arc::get_mut(&mut r_opt).unwrap();
+        // let pinned_r = Pin::new_unchecked(r_ref);
+        // spinlock_init!(pinned_r, "rtimer");
 
-        let mut p_opt = thread_guard.ptimer.as_mut().unwrap();
-        let p_ref = Arc::get_mut(&mut p_opt).unwrap();
-        let pinned_p = Pin::new_unchecked(p_ref);
-        spinlock_init!(pinned_p, "ptimer");
+        // let mut p_opt = thread_guard.ptimer.as_mut().unwrap();
+        // let p_ref = Arc::get_mut(&mut p_opt).unwrap();
+        // let pinned_p = Pin::new_unchecked(p_ref);
+        // spinlock_init!(pinned_p, "ptimer");
     }
 
     kthread.thread = Some(thread);

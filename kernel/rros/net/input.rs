@@ -40,8 +40,9 @@ impl RrosNetRxqueue {
         let ptr = unsafe { &mut *(ptr.unwrap() as *const _ as *mut RrosNetRxqueue) };
         ptr.hkey = hkey;
         unsafe { rust_helper_INIT_LIST_HEAD(&mut ptr.subscribers) };
-        let pinned = unsafe { core::pin::Pin::new_unchecked(&mut ptr.lock) };
-        spinlock_init!(pinned, "RrosNetRxqueue");
+        ptr.lock = Box::pin_init(new_spinlock!((),"RrosNetRxqueue")).unwrap();
+        // let pinned = unsafe { core::pin::Pin::new_unchecked(&mut ptr.lock) };
+        // spinlock_init!(pinned, "RrosNetRxqueue");
         NonNull::new(ptr)
     }
 

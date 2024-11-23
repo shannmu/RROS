@@ -731,8 +731,8 @@ pub fn rros_init_element(
     e_mut.fundle = RROS_NO_HANDLE;
     e_mut.devname = None;
     e_mut.clone_flags = clone_flags;
-    let pinned = unsafe { Pin::new_unchecked(&mut e_mut.ref_lock) };
-    spinlock_init!(pinned, "value");
+    // let pinned = unsafe { Pin::new_unchecked(&mut e_mut.ref_lock) };
+    // spinlock_init!(pinned, "value");
     Ok(0)
 }
 
@@ -910,20 +910,20 @@ fn rros_create_factory(
             }
 
             let mut index = RrosIndex {
-                rbtree: unsafe { SpinLock::new(rbtree::RBTree::new()) },
+                rbtree: unsafe { Box::pin_init(new_spinlock!(rbtree::RBTree::new(),"value")).unwrap() },
                 generator: RROS_NO_HANDLE,
             };
-            let pinned = unsafe { Pin::new_unchecked(&mut index.rbtree) };
-            spinlock_init!(pinned, "value");
+            // let pinned = unsafe { Pin::new_unchecked(&mut index.rbtree) };
+            // spinlock_init!(pinned, "value");
             inside.index = Some(index);
 
             let mut hashname: [types::HlistHead; NAME_HASH_TABLE_SIZE as usize] =
                 [types::HlistHead::new(); NAME_HASH_TABLE_SIZE as usize];
             types::hash_init(hashname[0].as_list_head(), NAME_HASH_TABLE_SIZE);
             inside.name_hash = Some(hashname);
-            let mut hash_lock = unsafe { SpinLock::new(0) };
-            let pinned = unsafe { Pin::new_unchecked(&mut hash_lock) };
-            spinlock_init!(pinned, "device_name_hash_lock");
+            let mut hash_lock = unsafe { Box::pin_init(new_spinlock!(0,"value")).unwrap() };
+            // let pinned = unsafe { Pin::new_unchecked(&mut hash_lock) };
+            // spinlock_init!(pinned, "device_name_hash_lock");
             inside.hash_lock = Some(hash_lock);
             0
         }

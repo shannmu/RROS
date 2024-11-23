@@ -209,9 +209,9 @@ fn rros_init_heap(heap: Arc<SpinLock<RrosHeap>>, membase: *mut u8, size: usize) 
         *i = u32::MAX;
     }
 
-    op_lock.lock = unsafe { SpinLock::new(1) };
-    let pinned = unsafe { Pin::new_unchecked(&mut op_lock.lock) };
-    spinlock_init!(pinned, "value");
+    op_lock.lock = unsafe { Box::pin_init(new_spinlock!(1)).unwrap() };
+    // let pinned = unsafe { Pin::new_unchecked(&mut op_lock.lock) };
+    // spinlock_init!(pinned, "value");
 
     nrpages = size >> RROS_HEAP_PAGE_SHIFT;
     let a: u64 = size_of::<RrosHeapPgentry>() as u64;

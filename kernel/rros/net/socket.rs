@@ -397,8 +397,9 @@ no_mangle_function_declaration! {
             rsk.wmem_wait.init(&mut RROS_MONO_CLOCK, 0);
         }
         // rros_init_poll_head(&esk->poll_head);
-        let pinned = unsafe { Pin::new_unchecked(&mut rsk.oob_lock) };
-        spinlock_init!(pinned, "net oob spinlock");
+        // let pinned = unsafe { Pin::new_unchecked(&mut rsk.oob_lock) };
+        // spinlock_init!(pinned, "net oob spinlock");
+        rsk.oob_lock = Box::pin_init(new_spinlock!((), "net oob spinlock")).unwrap();
 
         rsk.rmem_max = unsafe { (*sk).sk_rcvbuf };
         rsk.wmem_max = unsafe { (*sk).sk_sndbuf };

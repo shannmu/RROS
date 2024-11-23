@@ -186,8 +186,8 @@ impl RtswitchContext {
                 return Err(Error::EINVAL);
             }
             (*timer.locked_data().get()).pointer = this as *mut u8;
-            let t_pinned = Pin::new_unchecked(timer);
-            spinlock_init!(t_pinned, "wake_up_delay");
+            // let t_pinned = Pin::new_unchecked(timer);
+            // spinlock_init!(t_pinned, "wake_up_delay");
 
             rros_init_timer_on_rq(
                 self.wake_up_delay.clone(),
@@ -200,10 +200,10 @@ impl RtswitchContext {
         }
 
         Stax::init((&mut self.stax).as_mut())?;
-        let o_pinned = unsafe { Pin::new_unchecked(&mut self.o_guard) };
-        spinlock_init!(o_pinned, "o_guard");
-        let i_pinned = unsafe { Pin::new_unchecked(&mut self.i_guard) };
-        spinlock_init!(i_pinned, "i_guard");
+        // let o_pinned = unsafe { Pin::new_unchecked(&mut self.o_guard) };
+        // spinlock_init!(o_pinned, "o_guard");
+        // let i_pinned = unsafe { Pin::new_unchecked(&mut self.i_guard) };
+        // spinlock_init!(i_pinned, "i_guard");
 
         Ok(())
     }
