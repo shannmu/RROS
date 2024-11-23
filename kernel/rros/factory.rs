@@ -78,7 +78,7 @@ const RROS_HANDLE_INDEX_MASK: FundleT = RROS_MUTEX_FLCEIL | RROS_MUTEX_FLCLAIM;
 
 pub struct RrosIndex {
     // #[allow(dead_code)]
-    rbtree: SpinLock<rbtree::RBTree<FundleT, Rc<RefCell<RrosElement>>>>, // TODO: modify the u32.
+    rbtree: Pin<Box<SpinLock<rbtree::RBTree<FundleT, Rc<RefCell<RrosElement>>>>>>, // TODO: modify the u32.
     // lock: SpinLock<i32>,
     // #[allow(dead_code)]
     generator: FundleT,
@@ -158,7 +158,7 @@ pub struct RrosFactory {
     pub nrdev: usize,
     pub build: Option<
         fn(
-            fac: &'static mut SpinLock<RrosFactory>,
+            fac: &'static mut Pin<Box<SpinLock<RrosFactory>>>,
             uname: &'static CStr,
             u_attrs: Option<*mut u8>,
             clone_flags: i32,
@@ -322,7 +322,7 @@ impl device::Devnode for FactoryTypeDevnode {
 
 fn create_element_device(
     e: Rc<RefCell<RrosElement>>,
-    fac: &'static mut SpinLock<RrosFactory>,
+    fac: &'static mut Pin<Box<SpinLock<RrosFactory>>>,
 ) -> Result<usize> {
     let mut fac_lock = unsafe { (*fac.locked_data().get()).inside.as_mut() };
     let mut rdev: class::DevT = class::DevT::new(0);
@@ -398,7 +398,7 @@ fn rros_element_has_coredev(e: Rc<RefCell<RrosElement>>) -> bool {
 
 fn do_element_visibility(
     e: Rc<RefCell<RrosElement>>,
-    fac: &'static mut SpinLock<RrosFactory>,
+    fac: &'static mut Pin<Box<SpinLock<RrosFactory>>>,
     _rdev: &mut class::DevT,
 ) -> Result<usize> {
     // static int do_element_visibility(struct rros_element *e,
@@ -636,7 +636,7 @@ pub fn bind_file_to_element(
 
 pub fn rros_create_core_element_device(
     e: Rc<RefCell<RrosElement>>,
-    fac: &'static mut SpinLock<RrosFactory>,
+    fac: &'static mut Pin<Box<SpinLock<RrosFactory>>>,
     name: &'static CStr,
 ) -> Result<usize> {
     let e_clone = e.clone();
@@ -685,7 +685,7 @@ pub fn rros_create_core_element_device(
 // TODO: The global variable should not use *mut to pass the value.
 pub fn rros_init_element(
     e: Rc<RefCell<RrosElement>>,
-    fac: &'static mut SpinLock<RrosFactory>,
+    fac: &'static mut Pin<Box<SpinLock<RrosFactory>>>,
     clone_flags: i32,
 ) -> Result<usize> {
     let mut minor = 0;
@@ -764,7 +764,7 @@ fn create_sys_device<T>(
 }
 
 fn rros_create_factory(
-    fac: &mut SpinLock<RrosFactory>,
+    fac: &mut Pin<Box<SpinLock<RrosFactory>>>,
     rros_class: Arc<class::Class>,
     chrdev_reg: &mut Pin<Box<chrdev::Registration<NR_FACTORIES>>>,
     this_module: &'static ThisModule,
@@ -1024,7 +1024,7 @@ impl FileOperations for CloneOps {
 }
 
 fn create_core_factories(
-    factories: &mut [&mut SpinLock<RrosFactory>],
+    factories: &mut [&mut Pin<Box<SpinLock<RrosFactory>>>],
     nr: usize,
     rros_class: Arc<class::Class>,
     chrdev_reg: &mut Pin<Box<chrdev::Registration<NR_FACTORIES>>>,

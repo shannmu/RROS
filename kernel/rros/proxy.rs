@@ -56,9 +56,9 @@ pub struct ProxyRing {
     pub oob_wait: RrosFlag,
     pub inband_wait: waitqueue::WaitQueueHead,
     pub relay_work: RrosWork,
-    pub lock: SpinLock<i32>,
+    pub lock: Pin<Box<SpinLock<i32>>>,
     pub wq: Option<BoxedQueue>,
-    pub worker_lock: Arc<SpinLock<i32>>,
+    pub worker_lock: Arc<Pin<Box<SpinLock<i32>>>>,
 }
 
 impl ProxyRing {
@@ -75,9 +75,9 @@ impl ProxyRing {
             oob_wait: RrosFlag::new(),
             inband_wait: waitqueue::WaitQueueHead::new(),
             relay_work: RrosWork::new(),
-            lock: unsafe { SpinLock::new(0) },
+            lock: unsafe { Box::pin_init(new_spinlock!(0)).unwrap() },
             wq: None,
-            worker_lock: unsafe { Arc::try_new(SpinLock::new(0))? },
+            worker_lock: unsafe { Arc::try_new(Box::pin_init(new_spinlock!(0)).unwrap())? },
         })
     }
 }
@@ -779,7 +779,7 @@ pub fn init_input_ring(proxy: &mut RrosProxy, bufsz: u32, granularity: u32) -> R
 }
 
 fn proxy_factory_build(
-    fac: &'static mut SpinLock<RrosFactory>,
+    fac: &'static mut Pin<Box<SpinLock<RrosFactory>>>,
     uname: &'static CStr,
     u_attrs: Option<*mut u8>,
     mut clone_flags: i32,

@@ -110,7 +110,7 @@ pub struct RrosSocket {
     pub wmem_drain: RrosCrossing,
     pub protocol: be16,
     pub binding: Binding,
-    pub oob_lock: SpinLock<()>,
+    pub oob_lock: Pin<Box<SpinLock<()>>>,
 }
 
 const RROS_SOCKIOC_RECVMSG: u32 = 3226529285;

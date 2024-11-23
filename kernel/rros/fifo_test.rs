@@ -4,7 +4,7 @@ use core::ops::Deref;
 use kernel::{c_str, cpumask::CpumaskT, prelude::*, new_spinlock, sync::Lock, sync::SpinLock};
 
 #[allow(dead_code)]
-pub fn test_init_thread(thread: Arc<SpinLock<RrosThread>>, prio: i32) -> Result<usize> {
+pub fn test_init_thread(thread: Arc<Pin<Box<SpinLock<RrosThread>>>>, prio: i32) -> Result<usize> {
     let mut iattr = RrosInitThreadAttr::new();
     unsafe {
         iattr.affinity = &RROS_OOB_CPUS as *const CpumaskT;

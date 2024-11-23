@@ -115,14 +115,14 @@ pub struct RtswitchContext {
     switches_count: u32,
     pause_us: u64,
     next_task: u32,
-    wake_up_delay: Arc<SpinLock<RrosTimer>>,
+    wake_up_delay: Arc<Pin<Box<SpinLock<RrosTimer>>>>,
     failed: bool,
     error: HecticError,
     utask: u32,
     wake_utask: IrqWork,
     stax: Pin<Box<Stax<()>>>,
-    o_guard: SpinLock<Vec<usize>>,
-    i_guard: SpinLock<Vec<usize>>,
+    o_guard: Pin<Box<SpinLock<Vec<usize>>>>,
+    i_guard: Pin<Box<SpinLock<Vec<usize>>>>,
     rfile: RrosFile,
 }
 
@@ -152,7 +152,7 @@ impl RtswitchContext {
             switches_count: 0,
             pause_us: 0,
             next_task: 0,
-            wake_up_delay: Arc::try_new(unsafe { SpinLock::new(RrosTimer::new(0)) })?,
+            wake_up_delay: Arc::try_new(unsafe { Box::pin_init(new_spinlock!(RrosTimer::new(0),"wake_up_delay")).unwrap() })?,
             failed: false,
             error: HecticError {
                 last_switch: HecticSwitchReq {
@@ -164,8 +164,8 @@ impl RtswitchContext {
             utask: u32::MAX,
             wake_utask: IrqWork::new(),
             stax: unsafe { Pin::from(Box::try_new(Stax::new(()))?) },
-            o_guard: unsafe { SpinLock::new(Vec::new()) },
-            i_guard: unsafe { SpinLock::new(Vec::new()) },
+            o_guard: unsafe { Box::pin_init(new_spinlock!(Vec::new(),"o_guard")).unwrap() },
+            i_guard: unsafe { Box::pin_init(new_spinlock!(Vec::new(),"i_guard")).unwrap() },
             rfile: RrosFile::new(),
         };
         Ok(ctx)

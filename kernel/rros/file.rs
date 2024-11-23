@@ -27,6 +27,7 @@ use kernel::{
     str::CStr,
     sync::{Lock, SpinLock},
     task::Task,
+    new_spinlock,
 };
 
 pub struct RrosFileBinding {

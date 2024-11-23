@@ -51,6 +51,7 @@ use kernel::{
     user_ptr::UserSlicePtr,
     Error,
 };
+use core::cell::OnceCell;
 
 const POLLER_NEST_MAX: i32 = 4;
 const RROS_POLL_NR_CONNECTORS: usize = 4;
@@ -80,7 +81,7 @@ impl RrosPollGroup {
         Self {
             item_index: rbtree::RBTree::new(),
             item_list: List::new(),
-            waiter_list: Box::pin_init(new_spinlock!(List::new(),"RrosPollGroup::waiter_list")),
+            waiter_list: Box::pin_init(new_spinlock!(List::new(),"RrosPollGroup::waiter_list")).unwrap(),
             rfile: RrosFile::new(),
             // item_lock: mutex::RrosKMutex::new(),
             nr_items: 0,

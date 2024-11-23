@@ -531,7 +531,7 @@ pub struct RrosSkbQueueInner {
 unsafe impl Send for RrosSkbQueueInner {}
 unsafe impl Sync for RrosSkbQueueInner {}
 
-pub type RrosSkbQueue = SpinLock<RrosSkbQueueInner>;
+pub type RrosSkbQueue = Pin<Box<SpinLock<RrosSkbQueueInner>>>;
 
 impl RrosSkbQueueInner {
     #[inline]

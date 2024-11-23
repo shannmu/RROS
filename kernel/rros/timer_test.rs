@@ -86,9 +86,9 @@ pub fn test_rros_enqueue_timer() -> Result<usize> {
 pub fn test_rros_get_timer_gravity() -> Result<usize> {
     pr_debug!("~~~test_rros_get_timer_gravity begin~~~");
     unsafe {
-        let mut x = SpinLock::new(RrosTimer::new(1));
-        let pinned = Pin::new_unchecked(&mut x);
-        spinlock_init!(pinned, "x");
+        let mut x = Box::pin_init(new_spinlock!(RrosTimer::new(1),"x")).unwrap();
+        // let pinned = Pin::new_unchecked(&mut x);
+        // spinlock_init!(pinned, "x");
         let xx = Arc::try_new(x)?;
         xx.lock().set_clock(&mut RROS_MONO_CLOCK as *mut RrosClock);
 
@@ -312,9 +312,9 @@ pub fn test_program_timer() -> Result<usize> {
     pr_debug!("~~~test_program_timer begin~~~");
     unsafe {
         let tmb = rros_percpu_timers(&RROS_MONO_CLOCK, 0);
-        let mut x = SpinLock::new(RrosTimer::new(1));
-        let pinned = Pin::new_unchecked(&mut x);
-        spinlock_init!(pinned, "x");
+        let mut x = Box::pin_init(new_spinlock!(RrosTimer::new(1),"x")).unwrap();
+        // let pinned = Pin::new_unchecked(&mut x);
+        // spinlock_init!(pinned, "x");
 
         let xx = Arc::try_new(x)?;
 

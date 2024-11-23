@@ -207,7 +207,7 @@ pub struct XbufInbound {
     pub o_event: RrosFlag,
     pub irq_work: IrqWork,
     pub ring: XbufRing,
-    pub lock: SpinLock<i32>,
+    pub lock: Pin<Box<SpinLock<i32>>>,
 }
 
 impl XbufInbound {
@@ -217,7 +217,7 @@ impl XbufInbound {
             o_event: RrosFlag::new(),
             irq_work: IrqWork::new(),
             ring: XbufRing::new()?,
-            lock: unsafe { SpinLock::new(0) },
+            lock: unsafe { Box::pin_init(new_spinlock!(0)).unwrap() },
         })
     }
 }
@@ -929,7 +929,7 @@ pub fn rros_write_xbuf(xbuf: &mut RrosXbuf, buf: *const i8, count: usize, f_flag
 }
 
 fn xbuf_factory_build(
-    fac: &'static mut SpinLock<RrosFactory>,
+    fac: &'static mut Pin<Box<SpinLock<RrosFactory>>>,
     uname: &'static CStr,
     u_attrs: Option<*mut u8>,
     clone_flags: i32,

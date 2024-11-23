@@ -18,18 +18,18 @@ use kernel::{
 
 #[allow(dead_code)]
 pub struct RrosMonitorItem1 {
-    pub mutex: SpinLock<i32>,
+    pub mutex: Pin<Box<SpinLock<i32>>>,
     pub events: list::ListHead,
-    pub lock: SpinLock<i32>,
+    pub lock:  Pin<Box<SpinLock<i32>>>,
 }
 
 impl RrosMonitorItem1 {
     #[allow(dead_code)]
     fn new() -> Result<Self> {
         Ok(Self {
-            mutex: unsafe { SpinLock::new(0) },
+            mutex: unsafe { Box::pin_init(new_spinlock!(0,"RrosMonitorItem1_lock")).unwrap() },
             events: list::ListHead::default(),
-            lock: unsafe { SpinLock::<i32>::new(0) },
+            lock: unsafe { Box::pin_init(new_spinlock!(0,"value")).unwrap() },
         })
     }
 }

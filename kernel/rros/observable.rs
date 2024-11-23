@@ -903,7 +903,7 @@ impl FileOperations for ObservableOps {
 }
 
 pub fn observable_factory_build(
-    fac: &'static mut SpinLock<RrosFactory>,
+    fac: &'static mut Pin<Box<SpinLock<RrosFactory>>>,
     uname: &'static CStr,
     _u_attrs: Option<*mut u8>,
     clone_flags: i32,

@@ -24,7 +24,7 @@ pub struct RrosNetRxqueue {
     pub hkey: u32,
     pub hash: HlistNode,
     pub subscribers: bindings::list_head,
-    pub lock: SpinLock<()>,
+    pub lock: Pin<Box<SpinLock<()>>>,
     pub next: bindings::list_head,
 }
 
