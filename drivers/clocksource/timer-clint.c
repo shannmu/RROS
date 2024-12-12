@@ -243,7 +243,11 @@ static int __init clint_timer_init_dt(struct device_node *np)
 	}
 
 #ifdef CONFIG_SMP
+#ifdef CONFIG_IRQ_PIPELINE
+	rc = ipi_mux_create(PIPELINED_IPI_MAX, clint_send_ipi);
+#else
 	rc = ipi_mux_create(BITS_PER_BYTE, clint_send_ipi);
+#endif
 	if (rc <= 0) {
 		pr_err("unable to create muxed IPIs\n");
 		rc = (rc < 0) ? rc : -ENODEV;
@@ -251,7 +255,11 @@ static int __init clint_timer_init_dt(struct device_node *np)
 	}
 
 	irq_set_chained_handler(clint_ipi_irq, clint_ipi_interrupt);
+#ifdef CONFIG_IRQ_PIPELINE
+	riscv_ipi_set_virq_range(rc, PIPELINED_IPI_MAX);
+#else
 	riscv_ipi_set_virq_range(rc, BITS_PER_BYTE);
+#endif
 	clint_clear_ipi();
 #endif
 

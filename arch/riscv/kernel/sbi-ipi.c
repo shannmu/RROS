@@ -12,6 +12,7 @@
 #include <linux/irqchip/chained_irq.h>
 #include <linux/irqdomain.h>
 #include <asm/sbi.h>
+#include <asm/irq_pipeline.h>
 
 DEFINE_STATIC_KEY_FALSE(riscv_sbi_for_rfence);
 EXPORT_SYMBOL_GPL(riscv_sbi_for_rfence);
@@ -57,7 +58,11 @@ void __init sbi_ipi_init(void)
 		return;
 	}
 
+#ifdef CONFIG_IRQ_PIPELINE
+	virq = ipi_mux_create(PIPELINED_IPI_MAX, sbi_send_ipi);
+#else
 	virq = ipi_mux_create(BITS_PER_BYTE, sbi_send_ipi);
+#endif
 	if (virq <= 0) {
 		pr_err("unable to create muxed IPIs\n");
 		irq_dispose_mapping(sbi_ipi_virq);
@@ -74,8 +79,11 @@ void __init sbi_ipi_init(void)
 	cpuhp_setup_state(CPUHP_AP_IRQ_RISCV_SBI_IPI_STARTING,
 			  "irqchip/sbi-ipi:starting",
 			  sbi_ipi_starting_cpu, NULL);
-
+#ifdef CONFIG_IRQ_PIPELINE
+	riscv_ipi_set_virq_range(virq, PIPELINED_IPI_MAX);
+#else
 	riscv_ipi_set_virq_range(virq, BITS_PER_BYTE);
+#endif
 	pr_info("providing IPIs using SBI IPI extension\n");
 
 	/*

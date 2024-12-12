@@ -9,17 +9,19 @@
 #ifndef _ASM_RISCV_IRQ_PIPELINE_H
 #define _ASM_RISCV_IRQ_PIPELINE_H
 
-/*
- * Multiplex In-band IPI messages over software interrupt 0
- * as we do in the arm implementation.
- */
 #define OOB_NR_IPI		3
-#define OOB_IPI_OFFSET		1 /* Software interrupt 1 */
-#define TIMER_OOB_IPI		(ipi_virq_base + OOB_IPI_OFFSET)
-#define RESCHEDULE_OOB_IPI	(TIMER_OOB_IPI + 1)
-#define CALL_FUNCTION_OOB_IPI	(RESCHEDULE_OOB_IPI + 1)
+
 
 extern int ipi_virq_base;
+extern int NR_CALL_FUNCTION_OOB_IPI;
+extern int NR_RESCHEDULE_OOB_IPI;
+extern int NR_TIMER_OOB_IPI;
+extern int ipi_max;
+
+#define CALL_FUNCTION_OOB_IPI (ipi_virq_base + NR_CALL_FUNCTION_OOB_IPI)
+#define RESCHEDULE_OOB_IPI (ipi_virq_base + NR_RESCHEDULE_OOB_IPI)
+#define TIMER_OOB_IPI (ipi_virq_base + NR_TIMER_OOB_IPI)
+#define PIPELINED_IPI_MAX ipi_max
 
 #ifdef CONFIG_IRQ_PIPELINE
 

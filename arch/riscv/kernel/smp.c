@@ -8,6 +8,7 @@
  * Copyright (C) 2017 SiFive
  */
 
+#include "linux/compiler.h"
 #include <linux/cpu.h>
 #include <linux/clockchips.h>
 #include <linux/interrupt.h>
@@ -40,8 +41,23 @@ enum ipi_message_type {
 	IPI_TIMER,
 	IPI_CPU_BACKTRACE,
 	IPI_KGDB_ROUNDUP,
-	IPI_MAX
+#ifdef CONFIG_IRQ_PIPELINE
+	OOB_TIMER_IPI,
+	OOB_RESCHEDULE_IPI,
+	OOB_CALL_FUNCTION_IPI,
+#endif
+	IPI_MAX,
+
 };
+
+#ifdef CONFIG_IRQ_PIPELINE
+#define INBAND_IPI_MAX (IPI_MAX - OOB_NR_IPI)
+int ipi_max __ro_after_init = IPI_MAX;
+int NR_TIMER_OOB_IPI __ro_after_init = OOB_TIMER_IPI;
+int NR_RESCHEDULE_OOB_IPI __ro_after_init = OOB_RESCHEDULE_IPI;
+int NR_CALL_FUNCTION_OOB_IPI __ro_after_init = OOB_CALL_FUNCTION_IPI;
+#endif
+
 
 unsigned long __cpuid_to_hartid_map[NR_CPUS] __ro_after_init = {
 	[0 ... NR_CPUS-1] = INVALID_HARTID
@@ -52,10 +68,10 @@ void __init smp_setup_processor_id(void)
 	cpuid_to_hartid_map(0) = boot_cpu_hartid;
 }
 
-static DEFINE_PER_CPU_READ_MOSTLY(int, ipi_dummy_dev);
 int ipi_virq_base __ro_after_init;
 static int nr_ipi __ro_after_init = IPI_MAX;
 static struct irq_desc *ipi_desc[IPI_MAX] __read_mostly;
+
 
 int riscv_hartid_to_cpuid(unsigned long hartid)
 {
@@ -143,60 +159,25 @@ static irqreturn_t handle_IPI(int irq, void *data)
 
 #ifdef CONFIG_IRQ_PIPELINE
 
-static DEFINE_PER_CPU(unsigned long, ipi_messages);
-
-static DEFINE_PER_CPU(unsigned int [IPI_MAX], ipi_counts);
-
 void irq_send_oob_ipi(unsigned int irq,
 		const struct cpumask *cpumask)
 {
-	unsigned int sgi = irq - ipi_virq_base;
+	unsigned int op = irq - ipi_virq_base;
 
 	if (WARN_ON(irq_pipeline_debug() &&
-		    (sgi < OOB_IPI_OFFSET ||
-		     sgi >= OOB_IPI_OFFSET + OOB_NR_IPI)))
+		    (op < INBAND_IPI_MAX ||
+		     op >= IPI_MAX)))
 		return;
 
-	__ipi_send_mask(ipi_desc[sgi], cpumask);
+	/* Init oob ipis at first involve*/
+	if (unlikely(ipi_desc[op] == NULL))
+		ipi_desc[op] = irq_to_desc(irq);
+
+	__ipi_send_mask(ipi_desc[op], cpumask);
 }
 EXPORT_SYMBOL_GPL(irq_send_oob_ipi);
 
-static void send_ipi_mask(const struct cpumask *mask, enum ipi_message_type op)
-{
-	unsigned int cpu;
-
-	for_each_cpu(cpu, mask)
-		set_bit(op, &per_cpu(ipi_messages, cpu));
-
-	wmb();
-	__ipi_send_mask(ipi_desc[0], mask);
-}
-
-static void send_ipi_single(int cpu, enum ipi_message_type op)
-{
-	set_bit(op, &per_cpu(ipi_messages, cpu));
-
-	wmb();
-	__ipi_send_mask(ipi_desc[0], cpumask_of(cpu));
-}
-
-static irqreturn_t ipi_handler(int irq, void *data)
-{
-	unsigned long *pmsg;
-	unsigned int ipinr;
-
-	pmsg = raw_cpu_ptr(&ipi_messages);
-	while (*pmsg) {
-		ipinr = ffs(*pmsg) - 1;
-		clear_bit(ipinr, pmsg);
-		__this_cpu_inc(ipi_counts[ipinr]);
-		handle_IPI(ipinr + ipi_virq_base, data);
-	}
-
-	return IRQ_HANDLED;
-}
-
-#else /* !CONFIG_IRQ_PIPELINE */
+#endif
 
 static void send_ipi_mask(const struct cpumask *mask, enum ipi_message_type op)
 {
@@ -207,14 +188,6 @@ static void send_ipi_single(int cpu, enum ipi_message_type op)
 {
 	__ipi_send_mask(ipi_desc[op], cpumask_of(cpu));
 }
-
-static irqreturn_t ipi_handler(int irq, void *data)
-{
-	handle_IPI(irq, data);
-	return IRQ_HANDLED;
-}
-
-#endif /* !CONFIG_IRQ_PIPELINE */
 
 #ifdef CONFIG_IRQ_WORK
 void arch_irq_work_raise(void)
@@ -252,34 +225,23 @@ bool riscv_ipi_have_virq_range(void)
 
 void riscv_ipi_set_virq_range(int virq, int nr)
 {
-	int i, err, inband_nr_ipi;
+	int i, err;
 
 	if (WARN_ON(ipi_virq_base))
 		return;
 
 	WARN_ON(nr < IPI_MAX);
-	nr_ipi = min(nr, IPI_MAX);
-
-	/*
-	 * irq_pipeline: the in-band stage traps a single IPI, over
-	 * which all IPI messages are mutiplexed. Other IPIs are
-	 * available for exchanging out-of-band IPIs.
-	 */
-	inband_nr_ipi = irqs_pipelined() ? 1 : nr_ipi;
 
 	ipi_virq_base = virq;
 
 	/* Request IPIs */
 	for (i = 0; i < nr_ipi; i++) {
-		if (!irqs_pipelined()) {
+#ifdef CONFIG_IRQ_PIPELINE
+		if (i < INBAND_IPI_MAX)
+#endif
 			err = request_percpu_irq(ipi_virq_base + i, handle_IPI,
-						"IPI", &ipi_dummy_dev);
-		} else if (i < inband_nr_ipi) {
-			int err;
-
-			err = request_percpu_irq(ipi_virq_base + i, ipi_handler,
 						 "IPI", &irq_stat);
-		}
+
 		WARN_ON(err);
 
 		ipi_desc[i] = irq_to_desc(ipi_virq_base + i);
